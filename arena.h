@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define REGION_SIZE 4096
+#define REGION_SIZE 8192 // PAGE_SIZE * 2
 
 typedef struct Region Region;
 struct Region{
@@ -17,4 +17,5 @@ typedef struct {
 } Arena;
 
 void arena_grow(Arena*);
+void* arena_alloc(Arena*, size_t, size_t);
 #endif // ARENA_H
