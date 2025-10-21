@@ -35,6 +35,18 @@ void* arena_alloc(Arena *arena, size_t size, size_t align){
 		arena_grow(arena);
 	}
 	void *new_ptr = (void*)round_align((uintptr_t)arena->end->avail, align);
-	arena->end->avail = (void*)(size+new_ptr);
+	arena->end->avail = (void*)(size+(uintptr_t)new_ptr);
 	return new_ptr;
+}
+
+void arena_free(Arena *arena){
+	if(!arena->start)
+		return;
+	for(Region *at=arena->start, *dangling; at;){
+		dangling = at;
+		at = dangling->next;
+		munmap(dangling, REGION_SIZE);
+	}
+	arena->start = NULL;
+	arena->end = NULL;
 }
