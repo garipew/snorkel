@@ -6,7 +6,7 @@
 	(((start)+(align)-1) & ~((align)-1))
 
 void arena_grow(Arena *arena){
-	void *new_block = mmap(NULL, REGION_SIZE, PROT_READ|PROT_WRITE, MAP_ANONYMOUS, -1, 0);
+	void *new_block = mmap(NULL, REGION_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 	if(new_block == MAP_FAILED){
 		return;
 	}

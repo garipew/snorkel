@@ -1,10 +1,11 @@
 #ifndef ARENA_H
 #define ARENA_H
 
+#define _GNU_SOURCE
+#define REGION_SIZE 8192 // PAGE_SIZE * 2
+
 #include <stdint.h>
 #include <stddef.h>
-
-#define REGION_SIZE 8192 // PAGE_SIZE * 2
 
 typedef struct Region Region;
 struct Region{
