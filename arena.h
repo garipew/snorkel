@@ -16,9 +16,11 @@ struct Region{
 
 typedef struct {
 	Region *start, *end;
+	Region *current;
 } Arena;
 
 void arena_grow(Arena*);
 void* arena_alloc(Arena*, size_t, size_t);
 void arena_free(Arena*);
+void arena_reset(Arena*);
 #endif // ARENA_H
