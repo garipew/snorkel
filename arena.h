@@ -4,6 +4,12 @@
 #define _GNU_SOURCE
 #define REGION_SIZE 8192 // PAGE_SIZE * 2
 
+#ifdef __GNUC__
+#define ALIGNOF __alignof__
+#else
+#error "Compiler support not available yet"
+#endif
+
 #include <stdint.h>
 #include <stddef.h>
 
