@@ -1,5 +1,5 @@
-#ifndef ARENA_H
-#define ARENA_H
+#ifndef SNORKEL_H
+#define SNORKEL_H
 
 #define _GNU_SOURCE
 #define REGION_SIZE 8192 // PAGE_SIZE * 2
@@ -45,4 +45,4 @@ int string_find(string*, size_t, char*, size_t);
 void string_to_bytes(string*, char*, size_t, size_t);
 string* string_ensure_terminator(Arena*, string*);
 string* string_substr(Arena*, string*, int, int);
-#endif // ARENA_H
+#endif // SNORKEL_H
