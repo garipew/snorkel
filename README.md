@@ -31,3 +31,5 @@ Not really done yet, well, nothing here is.
 
 ## Notes
 I intend to let this repo grow as time passes, slowly. That's all for now!
+
+When starting to dive a little bit deeper, a snorkel can be handy! :)
