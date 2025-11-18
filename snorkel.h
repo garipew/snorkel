@@ -2,7 +2,7 @@
 #define SNORKEL_H
 
 #define _GNU_SOURCE
-#define REGION_SIZE 8192 // PAGE_SIZE * 2
+#define REGION_SIZE 32768 // PAGE_SIZE * 8
 
 #ifdef __GNUC__
 #define ALIGNOF __alignof__
@@ -15,6 +15,10 @@
 
 typedef uint8_t u8;
 
+////////////////////////////////////////////
+///	Arenas
+///////////////////////////////////////////
+
 typedef struct Region Region;
 struct Region{
 	Region *next;
@@ -26,7 +30,17 @@ typedef struct {
 	Region *start, *end;
 	Region *current;
 	size_t region_size;
+	u8 fixed_size;
 } Arena;
+
+void* arena_grow(Arena*, size_t);
+void* arena_alloc(Arena*, size_t, size_t);
+void arena_free(Arena*);
+void arena_reset(Arena*);
+
+////////////////////////////////////////////
+///	Strings
+///////////////////////////////////////////
 
 typedef struct {
 	size_t size;
@@ -34,10 +48,6 @@ typedef struct {
 	char *bytes;
 } string;
 
-void* arena_grow(Arena*, size_t);
-void* arena_alloc(Arena*, size_t, size_t);
-void arena_free(Arena*);
-void arena_reset(Arena*);
 string* arena_create_string(Arena*, size_t);
 string* string_concat(Arena*, string*, string*);
 string* string_concat_bytes(Arena*, string*, char*, size_t);
@@ -52,10 +62,10 @@ string* string_substr(Arena*, string*, int, int);
 
 typedef struct coroutine coroutine;
 struct coroutine {
-	uintptr_t yield_point;
-	uintptr_t start;
-	uintptr_t end;
-	uintptr_t return_point;
+	u8* yield_point;
+	u8* start;
+	u8* end;
+	void (*restore_state)();
 	coroutine *next;
 
 	void (*signature)(void);
