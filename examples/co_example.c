@@ -32,5 +32,6 @@ int main(){
 	coroutine_create(co_example_odd);
 	coroutine_create(co_example_clap);
 	coroutine_start();
+	printf("Then, after they are done, main resumes.\n");
 	return 0;
 }

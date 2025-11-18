@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -Wextra -pedantic -std=c99 -fPIC -g
+CFLAGS=-Wall -Wextra -pedantic -std=c99 -g
 CLIBS=-I/usr/local/include/snorkel -L/usr/local/lib -lsnorkel
 
 build: libsnorkel.so
@@ -12,7 +12,7 @@ install: libsnorkel.so
 	ldconfig
 
 libsnorkel.so: snorkel.c snorkel.h
-	$(CC) $(CFLAGS) snorkel.c -shared -o libsnorkel.so
+	$(CC) $(CFLAGS) -fPIC snorkel.c -shared -o libsnorkel.so
 
 co_example: examples/co_example.c
 	$(CC) $(CFLAGS) examples/co_example.c -o co_example $(CLIBS)
