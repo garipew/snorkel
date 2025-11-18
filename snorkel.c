@@ -55,7 +55,7 @@ void* arena_alloc(Arena *arena, size_t size, size_t align){
 	if(arena->start && size > arena->region_size){
 		// TODO(garipew): Unsure if this should be a thing. Right now, the first allocation
 		// defines the scope of an arena, ensuring the congruency of the sizes of regions.
-		// But I don't know if this should be responsibility of the allocator...  
+		// But I don't know if this should be responsibility of the allocator...
 		// In fact this doesn't solve the possibility of fragmentation. There is no solution
 		// but the informed usage. I have heard that arenas aren't the 'one size fits all'
 		// allocator such as malloc, but at the same time, I can not have a constant
@@ -68,7 +68,7 @@ void* arena_alloc(Arena *arena, size_t size, size_t align){
 	}
 	// TODO(garipew): Right now, alloc also cleans the memory. This is nice to do, already an
 	// improvement compared to doing so in reset. But also there's some redundancy here...
-	// Maybe I could find a way to clean exactly what is going to be used and nothing more?  
+	// Maybe I could find a way to clean exactly what is going to be used and nothing more?
 	if(find_space(arena, size, align)){
 		memset(arena->current->avail, 0, arena->current->limit-arena->current->avail);
 	}else if(!arena_grow(arena, size)){
@@ -109,7 +109,7 @@ string* arena_create_string(Arena *arena, size_t size){
 string* arena_expand_string(Arena *arena, string* str, size_t new_size){
 	string *expanded = arena_create_string(arena, new_size);
 	if(str){
-		memcpy(expanded->bytes, str->bytes, str->size); 
+		memcpy(expanded->bytes, str->bytes, str->size);
 		expanded->len = str->len;
 	}
 	return expanded;
@@ -211,4 +211,74 @@ string* string_substr(Arena *a, string *str, int start, int end){
 	sub->len = sub->size;
 	sub = string_ensure_terminator(a, sub);
 	return sub;
+}
+
+////////////////////////////////////////////
+///	Coroutines
+///////////////////////////////////////////
+
+Arena _co_arena = {0};
+scheduler _co_scheduler = {0};
+
+void coroutine_create(void (*routine)(void)){
+	coroutine *new = arena_alloc(&_co_arena, sizeof(*new), ALIGNOF(*new));
+	new->signature = routine;
+	if(!_co_scheduler.start){
+		_co_scheduler.start = new;
+		_co_scheduler.end = new;
+		return;
+	}
+	_co_scheduler.end->next = new;
+	_co_scheduler.end = new;
+}
+
+// restore stack frame and jumps to yield point
+void _start_internal(coroutine *c){
+	if(!c){
+		return;
+	}
+	_co_scheduler.start = c->next;
+	c->next = NULL;
+	_co_scheduler.running = c;
+	if(c->heap_frame){
+		__asm__("push %rdi\n\t");
+		memcpy((void*)c->start, c->heap_frame, c->frame_size);
+		__asm__("pop %rdi\n\t"
+			"leave\n\t"
+			"mov %rdi, %rsp\n\t"
+			"add $0x8, %rsp\n\t"
+			"mov (%rsp), %rsp\n\t" // rsp = c->start
+			"mov %rdi, %rbp\n\t"
+			"add $0x10, %rbp\n\t"
+			"mov (%rbp), %rbp\n\t" // rbp = c->end
+			"sub $0x10, %rbp\n\t" // ignore the extra space reserved for the return address
+			"jmp *(%rdi)\n\t"); // jmp c->yield_point
+	}
+	__asm__("leave\n\t"
+		"jmp *0x28(%rdi)\n\t"); //jmp c->signature;
+}
+
+// load stack frame and jumps to the next coroutine
+void _yield_internal(coroutine *c, coroutine *next){
+	if(!c->start || !c->end){
+		load_registers(c);
+	}
+	__asm__("push %rsi\n\t");
+	if(!c->heap_frame){
+		c->frame_size = c->end-c->start;
+		c->heap_frame = arena_alloc(&_co_arena, c->frame_size, 1);
+	}
+	memcpy(c->heap_frame, (void*)c->start, c->frame_size);
+
+	if(!next){
+		next = c;
+	}
+	_co_scheduler.end->next = c;
+	_co_scheduler.end = c;
+	if(!next->return_point){
+		next->return_point = (uintptr_t)_start_internal;
+	}
+	__asm__("pop %rdi\n\t"
+		"leave\n\t"
+		"jmp *0x18(%rdi)\n\t"); // jump to c->return_point
 }
