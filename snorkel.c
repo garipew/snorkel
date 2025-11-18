@@ -4,6 +4,10 @@
 #include <stdio.h>
 #include <sys/mman.h>
 
+////////////////////////////////////////////
+///	Arenas
+///////////////////////////////////////////
+
 #define round_align(start, align) \
 	(((start)+(align)-1) & ~((align)-1))
 
@@ -98,6 +102,10 @@ void arena_free(Arena *arena){
 	arena->current = NULL;
 	arena->region_size = 0;
 }
+
+////////////////////////////////////////////
+///	Strings
+///////////////////////////////////////////
 
 string* arena_create_string(Arena *arena, size_t size){
 	string *str = arena_alloc(arena, sizeof(*str)+size, ALIGNOF(*str));
@@ -241,10 +249,15 @@ void _start_internal(coroutine *c){
 	c->next = NULL;
 	_co_scheduler.running = c;
 	if(c->heap_frame){
-		__asm__("push %rdi\n\t");
-		memcpy((void*)c->start, c->heap_frame, c->frame_size);
-		__asm__("pop %rdi\n\t"
+		__asm__("push %rdi\n\t"
+			"push %rsi\n\t"
+			"push %rdx\n\t");
+		memcpy(c->start, c->heap_frame, c->frame_size);
+		__asm__("pop %rdx\n\t"
+			"pop %rsi\n\t"
+			"pop %rdi\n\t"
 			"leave\n\t"
+			"pop %rsp\n\t" // remove ret addr from stack
 			"mov %rdi, %rsp\n\t"
 			"add $0x8, %rsp\n\t"
 			"mov (%rsp), %rsp\n\t" // rsp = c->start
@@ -263,22 +276,29 @@ void _yield_internal(coroutine *c, coroutine *next){
 	if(!c->start || !c->end){
 		load_registers(c);
 	}
-	__asm__("push %rsi\n\t");
+	__asm__("push %rdi\n\t"
+                "push %rsi\n\t"
+                "push %rdx\n\t");
 	if(!c->heap_frame){
 		c->frame_size = c->end-c->start;
 		c->heap_frame = arena_alloc(&_co_arena, c->frame_size, 1);
 	}
-	memcpy(c->heap_frame, (void*)c->start, c->frame_size);
+	memcpy(c->heap_frame, c->start, c->frame_size);
+	__asm__("pop %rdx\n\t"
+                "pop %rsi\n\t"
+                "pop %rdi\n\t");
 
 	if(!next){
 		next = c;
 	}
 	_co_scheduler.end->next = c;
 	_co_scheduler.end = c;
-	if(!next->return_point){
-		next->return_point = (uintptr_t)_start_internal;
+	if(!next->restore_state){
+		next->restore_state = _start_internal;
 	}
-	__asm__("pop %rdi\n\t"
-		"leave\n\t"
-		"jmp *0x18(%rdi)\n\t"); // jump to c->return_point
+	__asm__("leave\n\t"
+		"pop %rdi\n\t"  // remove ret addr from stack
+		"leave\n\t" // leave caller stack frame
+		"mov %rsi, %rdi\n\t"
+		"jmp *0x18(%rdi)\n\t"); // jump to next->restore_state
 }
