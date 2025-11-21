@@ -324,4 +324,5 @@ void scheduler_wake_next(scheduler *sched){
 		"pop %r12\n\t"
 		"pop %r12\n\t"
 		"pop %rbx\n\t");
+	arena_free(&_co_arena);
 }
