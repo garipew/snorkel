@@ -286,7 +286,8 @@ void _load_context(scheduler *sched){
 }
 
 void get_yield_point(scheduler *sched){
-	__asm__("mov 0x10(%rdi), %rdi\n\t" // sched.running value (ptr)
+	__asm__("mov %rdi, %rbx\n\t"
+		"mov 0x10(%rdi), %rdi\n\t" // sched.running value (ptr)
 		"mov 0x8(%rbp), %rax\n\t" // running.yield_point
 		"mov %rax, (%rdi)\n\t"
 		"addb $0x2, (%rdi)\n\t"// skip leave & ret inst
@@ -299,18 +300,18 @@ void scheduler_wake_next(scheduler *sched){
 		"push %r12\n\t"
 		"push %r12\n\t"
 		"push %r13\n\t"
-		"mov %rdi, %r12\n\t"
-		"mov %rsi, %r13\n\t");
+		"mov %rdi, %r12\n\t");
 	for( ; sched->start; ){
-		__asm__("mov %r12, -0x8(%rbp)\n\t"
-			"mov %r13, -0x10(%rbp)\n\t");
+		__asm__("mov %r12, -0x8(%rbp)\n\t");
 		sched->running = sched->start;
 		sched->start = sched->start->next;
 		sched->running->next = NULL;
 		if(!sched->running || !sched->running->yield_point){
 			break;
 		}
-		__asm__("mov 0x10(%r12), %rbx\n\t"); // sched.running value (ptr)
+		__asm__("mov 0x10(%r12), %rbx\n\t"
+			"push %r12\n\t"
+			"push %r12\n\t"); // sched.running value (ptr)
 		if(sched->running->heap_frame){
 			_restore_context(sched); // restored %rbx still in stack
 			__asm__("mov %rbx, %r9\n\t"
@@ -318,7 +319,9 @@ void scheduler_wake_next(scheduler *sched){
 				"pop %rbx\n\t"
 				"jmp *(%r9)\n\t");
 		}
-		__asm__("call *(%rbx)\n\t");
+		__asm__("call *(%rbx)\n\t"
+			"pop %r12\n\t"
+			"pop %r12\n\t");
 	}
 	__asm__("pop %r13\n\t"
 		"pop %r12\n\t"
