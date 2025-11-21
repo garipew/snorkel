@@ -27,8 +27,6 @@ my [chip8 emulator](https://github.com/garipew/cemu8) and decided to play
 around with asynchronous IO operations. And then, all the potential struck me,
 so, as any normal person would, I decided to give it a try and implement it!   
 
-Not really done yet, well, nothing here is. 
-
 ## Notes
 I intend to let this repo grow as time passes, slowly. That's all for now!
 
