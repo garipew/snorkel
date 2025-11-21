@@ -230,7 +230,7 @@ scheduler _co_scheduler = {0};
 
 void coroutine_create(void (*routine)(void)){
 	coroutine *new = arena_alloc(&_co_arena, sizeof(*new), ALIGNOF(*new));
-	new->signature = routine;
+	new->yield_point = (void*)routine;
 	if(!_co_scheduler.start){
 		_co_scheduler.start = new;
 		_co_scheduler.end = new;
@@ -240,65 +240,88 @@ void coroutine_create(void (*routine)(void)){
 	_co_scheduler.end = new;
 }
 
-// restore stack frame and jumps to yield point
-void _start_internal(coroutine *c){
-	if(!c){
-		return;
-	}
-	_co_scheduler.start = c->next;
-	c->next = NULL;
-	_co_scheduler.running = c;
-	if(c->heap_frame){
-		__asm__("push %rdi\n\t"
-			"push %rsi\n\t"
-			"push %rdx\n\t");
-		memcpy(c->start, c->heap_frame, c->frame_size);
-		__asm__("pop %rdx\n\t"
-			"pop %rsi\n\t"
-			"pop %rdi\n\t"
-			"leave\n\t"
-			"pop %rsp\n\t" // remove ret addr from stack
-			"mov %rdi, %rsp\n\t"
-			"add $0x8, %rsp\n\t"
-			"mov (%rsp), %rsp\n\t" // rsp = c->start
-			"mov %rdi, %rbp\n\t"
-			"add $0x10, %rbp\n\t"
-			"mov (%rbp), %rbp\n\t" // rbp = c->end
-			"sub $0x10, %rbp\n\t" // ignore the extra space reserved for the return address
-			"jmp *(%rdi)\n\t"); // jmp c->yield_point
-	}
-	__asm__("leave\n\t"
-		"jmp *0x28(%rdi)\n\t"); //jmp c->signature;
+void _restore_context(scheduler *sched){
+	__asm__("mov 0x8(%rbp), %r8\n\t" // save ret addr
+		"mov 0x10(%rdi), %r9\n\t"
+		"mov 0x8(%r9), %rsp\n\t" // rsp == sched->running->start
+		"mov 0x10(%r9), %rbp\n\t" // rsp == sched->running->end
+		"push %rbx\n\t"
+		"push %rbx\n\t"
+		"mov %r8, %rbx\n\t"
+		"mov %rdi, -0x8(%rbp)\n\t");
+	memcpy(sched->running->start, sched->running->heap_frame, sched->running->frame_size);
+	__asm__("mov %rbx, %r8\n\t"
+		"pop %rbx\n\t"
+		"pop %rbx\n\t"
+		"pop %r15\n\t"
+		"pop %r14\n\t"
+		"pop %r13\n\t"
+		"pop %r12\n\t"
+		"jmp *%r8\n\t"); // back to caller
 }
 
-// load stack frame and jumps to the next coroutine
-void _yield_internal(coroutine *c, coroutine *next){
-	if(!c->start || !c->end){
-		load_registers(c);
+void _load_context(scheduler *sched){
+	// sched->running->start = rsp caller;
+	// sched->running->end = rbp caller;
+	__asm__("mov 0x10(%rdi), %rdi\n\t" // sched.running value (ptr)
+		"add $0x8, %rdi\n\t" // sched.running.start addr
+		"mov %rdi, %rax\n\t"
+		"add $0x8, %rax\n\t" // sched.running.end addr
+		"mov %rbp, (%rdi)\n\t"
+		"addb $0x10, (%rdi)\n\t" // *sched.running.start = rsp previous
+		"mov (%rbp), %r8\n\t"
+		"mov %r8, (%rax)\n\t" // *sched.running.end = rbp previous
+	       );
+	coroutine *r = sched->running;
+	if(!r->heap_frame){
+		r->frame_size = (r->end - r->start) +0x10; // store ret addr
+		r->heap_frame = arena_alloc(&_co_arena, r->frame_size, 1);
 	}
-	__asm__("push %rdi\n\t"
-                "push %rsi\n\t"
-                "push %rdx\n\t");
-	if(!c->heap_frame){
-		c->frame_size = c->end-c->start;
-		c->heap_frame = arena_alloc(&_co_arena, c->frame_size, 1);
+	memcpy(r->heap_frame, r->start, r->frame_size);
+	sched->end->next = sched->running;
+	sched->end = sched->running;
+	if(!sched->start){
+		sched->start = sched->end;
 	}
-	memcpy(c->heap_frame, c->start, c->frame_size);
-	__asm__("pop %rdx\n\t"
-                "pop %rsi\n\t"
-                "pop %rdi\n\t");
+}
 
-	if(!next){
-		next = c;
+void get_yield_point(scheduler *sched){
+	__asm__("mov 0x10(%rdi), %rdi\n\t" // sched.running value (ptr)
+		"mov 0x8(%rbp), %rax\n\t" // running.yield_point
+		"mov %rax, (%rdi)\n\t"
+		"addb $0x2, (%rdi)\n\t"// skip leave & ret inst
+		);
+	sched->running = NULL;
+}
+
+void scheduler_wake_next(scheduler *sched){
+	__asm__("push %rbx\n\t"
+		"push %r12\n\t"
+		"push %r12\n\t"
+		"push %r13\n\t"
+		"mov %rdi, %r12\n\t"
+		"mov %rsi, %r13\n\t");
+	for( ; sched->start; ){
+		__asm__("mov %r12, -0x8(%rbp)\n\t"
+			"mov %r13, -0x10(%rbp)\n\t");
+		sched->running = sched->start;
+		sched->start = sched->start->next;
+		sched->running->next = NULL;
+		if(!sched->running || !sched->running->yield_point){
+			break;
+		}
+		__asm__("mov 0x10(%r12), %rbx\n\t"); // sched.running value (ptr)
+		if(sched->running->heap_frame){
+			_restore_context(sched); // restored %rbx still in stack
+			__asm__("mov %rbx, %r9\n\t"
+				"pop %rbx\n\t"
+				"pop %rbx\n\t"
+				"jmp *(%r9)\n\t");
+		}
+		__asm__("call *(%rbx)\n\t");
 	}
-	_co_scheduler.end->next = c;
-	_co_scheduler.end = c;
-	if(!next->restore_state){
-		next->restore_state = _start_internal;
-	}
-	__asm__("leave\n\t"
-		"pop %rdi\n\t"  // remove ret addr from stack
-		"leave\n\t" // leave caller stack frame
-		"mov %rsi, %rdi\n\t"
-		"jmp *0x18(%rdi)\n\t"); // jump to next->restore_state
+	__asm__("pop %r13\n\t"
+		"pop %r12\n\t"
+		"pop %r12\n\t"
+		"pop %rbx\n\t");
 }

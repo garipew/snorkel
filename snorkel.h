@@ -62,13 +62,10 @@ string* string_substr(Arena*, string*, int, int);
 
 typedef struct coroutine coroutine;
 struct coroutine {
-	u8* yield_point;
-	u8* start;
-	u8* end;
-	void (*restore_state)();
+	u8 *yield_point;
+	u8 *start;
+	u8 *end;
 	coroutine *next;
-
-	void (*signature)(void);
 
 	size_t frame_size;
 	u8 *heap_frame;
@@ -82,34 +79,25 @@ typedef struct {
 
 extern scheduler _co_scheduler;
 extern Arena _co_arena;
-#define coroutine_start() \
-	_start_internal(_co_scheduler.start)
-
-// As long as c is the first argument of the function that calls load_frame,
-// it should be fine...
-#define load_registers(c)\
-	__asm__("push %rax\n\t"\
-                "push %rbx\n\t"\
-		"mov %rdi, %rax\n\t" /* rdi is c but also, &c->yield_point*/ \
-		"mov 0x8(%rbp), %rax\n\t" \
-		"mov %rax, (%rdi)\n\t" /* c->yield_point == return addr */ \
-		"mov %rdi, %rax\n\t" \
-		"add $0x8, %rax\n\t" /* rax is &c->start */ \
-		"mov %rbp, (%rax)\n\t" /* c->start = rbp+0x10 rbp and ret are pushed */ \
-		"addb $0x10, (%rax)\n\t" \
-		"mov %rdi, %rbx\n\t"\
-		"add $0x10, %rbx\n\t" /* rbx is &c->end */ \
-		"mov %rbp, %rax\n\t" \
-		"mov (%rax), %rax\n\t" \
-		"mov %rax, (%rbx)\n\t" /* c->end = rbp */ \
-		"addb $0x10, (%rbx)\n\t" /* c->end = rbp + 0x10 to include the return address */\
-		"pop %rbx\n\t"\
-		"pop %rax\n\t")
 
 #define yield \
-	_yield_internal(_co_scheduler.running, _co_scheduler.start)
+	__asm__("push %rbx\n\t" \
+		"push %rbx\n\t" \
+		"push %r12\n\t" \
+		"push %r13\n\t" \
+		"push %r14\n\t" \
+		"push %r15\n\t"); \
+	_load_context(&_co_scheduler); \
+	get_yield_point(&_co_scheduler); \
+	__asm__("leave\n\t" \
+		"ret\n\t");
+
+#define coroutine_start() \
+	scheduler_wake_next(&_co_scheduler)
 
 void coroutine_create(void (*)(void));
-void _start_internal(coroutine *);
-void _yield_internal(coroutine *, coroutine *);
+void _restore_context(scheduler*);
+void _load_context(scheduler*);
+void get_yield_point(scheduler*);
+void scheduler_wake_next(scheduler*);
 #endif // SNORKEL_H

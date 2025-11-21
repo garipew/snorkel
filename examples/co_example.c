@@ -19,18 +19,9 @@ void co_example_odd(){
 	}
 }
 
-void co_example_clap(){
-	for(int i = 1; i < 10; i++){
-		printf("*clap*\n");
-		yield;
-	}
-}
-
 int main(){
 	coroutine_create(co_example_even);
-	coroutine_create(co_example_clap);
 	coroutine_create(co_example_odd);
-	coroutine_create(co_example_clap);
 	coroutine_start();
 	printf("Then, after they are done, main resumes.\n");
 	return 0;
