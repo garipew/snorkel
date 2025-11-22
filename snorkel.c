@@ -278,11 +278,13 @@ void _load_context(scheduler *sched){
 		r->heap_frame = arena_alloc(&_co_arena, r->frame_size, 1);
 	}
 	memcpy(r->heap_frame, r->start, r->frame_size);
+	if(!sched->start){
+		sched->start = sched->running;
+		sched->end = sched->running;
+		return;
+	}
 	sched->end->next = sched->running;
 	sched->end = sched->running;
-	if(!sched->start){
-		sched->start = sched->end;
-	}
 }
 
 void get_yield_point(scheduler *sched){
