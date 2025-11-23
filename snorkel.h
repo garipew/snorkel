@@ -60,7 +60,7 @@ string* string_substr(Arena*, string*, int, int);
 ///	Coroutines
 ///////////////////////////////////////////
 
-// NOTE(garipew): Not thread-safe, at least for now.
+// NOTE(garipew): Threads spawned inside coroutine shall not outlive yield
 
 typedef struct coroutine coroutine;
 struct coroutine {
