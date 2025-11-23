@@ -60,10 +60,7 @@ string* string_substr(Arena*, string*, int, int);
 ///	Coroutines
 ///////////////////////////////////////////
 
-// TODO(garipew): There are some weird cases where valgrind complains about
-// code here, specifically on _load_context, for reading the previous frame
-// funnily enough, I only encountered this when interacting with raylib,
-// but maybe this still requires some refining.
+// NOTE(garipew): Not thread-safe, at least for now.
 
 typedef struct coroutine coroutine;
 struct coroutine {
