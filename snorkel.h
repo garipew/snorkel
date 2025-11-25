@@ -62,11 +62,13 @@ string* string_substr(Arena*, string*, int, int);
 
 // NOTE(garipew): Threads spawned inside coroutine shall not outlive yield
 
+#define FRAME_SIZE 1048576 /* 1MB */
+
 typedef struct coroutine coroutine;
 struct coroutine {
 	u8 *yield_point;
-	u8 *start;
-	u8 *end;
+	u8 *rsp;
+	u8 *rbp;
 	coroutine *next;
 
 	size_t frame_size;
@@ -81,25 +83,19 @@ typedef struct {
 
 extern scheduler _co_scheduler;
 extern Arena _co_arena;
+extern Arena _co_frame;
 
 #define yield \
-	__asm__("push %rbx\n\t" \
-		"push %rbx\n\t" \
-		"push %r12\n\t" \
-		"push %r13\n\t" \
-		"push %r14\n\t" \
-		"push %r15\n\t"); \
-	_load_context(&_co_scheduler); \
-	get_yield_point(&_co_scheduler); \
-	__asm__("leave\n\t" \
-		"ret\n\t");
+	_co_load_context(); \
+	_co_resume_yield(&_co_scheduler)
 
 #define coroutine_start() \
-	scheduler_wake_next(&_co_scheduler)
+	_co_scheduler_wake_next(&_co_scheduler)
 
 void coroutine_create(void (*)(void));
-void _restore_context(scheduler*);
-void _load_context(scheduler*);
-void get_yield_point(scheduler*);
-void scheduler_wake_next(scheduler*);
+void _co_restore_context();
+void _co_load_context();
+void _co_swap_context(scheduler*);
+void _co_resume_yield(scheduler*);
+void _co_scheduler_wake_next(scheduler*);
 #endif // SNORKEL_H

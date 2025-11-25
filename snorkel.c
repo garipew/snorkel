@@ -226,11 +226,16 @@ string* string_substr(Arena *a, string *str, int start, int end){
 ///////////////////////////////////////////
 
 Arena _co_arena = {0};
+Arena _co_frame = {0};
 scheduler _co_scheduler = {0};
 
-void coroutine_create(void (*routine)(void)){
+void coroutine_create(void (*routine)(void))
+{
 	coroutine *new = arena_alloc(&_co_arena, sizeof(*new), ALIGNOF(*new));
 	new->yield_point = (void*)routine;
+	new->heap_frame = arena_alloc(&_co_frame, FRAME_SIZE, 1);
+	new->rsp = new->heap_frame + FRAME_SIZE;
+	new->rbp = new->rsp;
 	if(!_co_scheduler.start){
 		_co_scheduler.start = new;
 		_co_scheduler.end = new;
@@ -240,94 +245,98 @@ void coroutine_create(void (*routine)(void)){
 	_co_scheduler.end = new;
 }
 
-void _restore_context(scheduler *sched){
-	__asm__("mov 0x8(%rbp), %r8\n\t" // save ret addr
-		"mov 0x10(%rdi), %r9\n\t"
-		"mov 0x8(%r9), %rsp\n\t" // rsp == sched->running->start
-		"mov 0x10(%r9), %rbp\n\t" // rsp == sched->running->end
-		"push %rbx\n\t"
-		"push %rbx\n\t"
-		"mov %r8, %rbx\n\t"
-		"mov %rdi, -0x8(%rbp)\n\t");
-	memcpy(sched->running->start, sched->running->heap_frame, sched->running->frame_size);
-	__asm__("mov %rbx, %r8\n\t"
-		"pop %rbx\n\t"
-		"pop %rbx\n\t"
-		"pop %r15\n\t"
-		"pop %r14\n\t"
-		"pop %r13\n\t"
-		"pop %r12\n\t"
-		"jmp *%r8\n\t"); // back to caller
+// NOTE(garipew): Naked are also never inlined.
+__attribute__((naked, optimize("O0")))
+void _co_restore_context()
+{
+	__asm__ volatile("pop %r8\n\t" // save ret addr
+			/* Restore non-volatile from frame */
+			"pop %r15\n\t"
+			"pop %r14\n\t"
+			"pop %r13\n\t"
+			"pop %r12\n\t"
+			"pop %rbx\n\t"
+			"pop %rbx\n\t"
+			"jmp *%r8\n\t"); // back to caller
 }
 
-void _load_context(scheduler *sched){
-	// sched->running->start = rsp caller;
-	// sched->running->end = rbp caller;
-	__asm__("mov 0x10(%rdi), %rdi\n\t" // sched.running value (ptr)
-		"add $0x8, %rdi\n\t" // sched.running.start addr
-		"mov %rdi, %rax\n\t"
-		"add $0x8, %rax\n\t" // sched.running.end addr
-		"mov %rbp, (%rdi)\n\t"
-		"addb $0x10, (%rdi)\n\t" // *sched.running.start = rsp previous
-		"mov (%rbp), %r8\n\t"
-		"mov %r8, (%rax)\n\t" // *sched.running.end = rbp previous
-	       );
-	coroutine *r = sched->running;
-	if(!r->heap_frame){
-		r->frame_size = (r->end - r->start) +0x10; // store ret addr
-		r->heap_frame = arena_alloc(&_co_arena, r->frame_size, 1);
-	}
-	memcpy(r->heap_frame, r->start, r->frame_size);
-	if(!sched->start){
-		sched->start = sched->running;
-		sched->end = sched->running;
-		return;
-	}
-	sched->end->next = sched->running;
-	sched->end = sched->running;
+__attribute__((naked, optimize("O0")))
+void _co_load_context()
+{
+	__asm__ volatile("pop %r8\n\t" // save ret addr
+			/* Save non-volatile to frame */
+			"push %rbx\n\t"
+			"push %rbx\n\t"
+			"push %r12\n\t"
+			"push %r13\n\t"
+			"push %r14\n\t"
+			"push %r15\n\t"
+			"jmp *%r8\n\t"); // back to caller
 }
 
-void get_yield_point(scheduler *sched){
-	__asm__("mov %rdi, %rbx\n\t"
-		"mov 0x10(%rdi), %rdi\n\t" // sched.running value (ptr)
-		"mov 0x8(%rbp), %rax\n\t" // running.yield_point
-		"mov %rax, (%rdi)\n\t"
-		"addb $0x2, (%rdi)\n\t"// skip leave & ret inst
-		);
-	sched->running = NULL;
+__attribute__((naked, optimize("O0")))
+void _co_swap_context(scheduler *sched)
+{
+	(void) sched;
+	__asm__ volatile("pop %r8\n\t" // save ret addr
+			"mov 0x10(%rdi), %r9\n\t"
+			"xchg 0x8(%r9), %rsp\n\t" // rsp <=> sched->running->rsp
+			"xchg 0x10(%r9), %rbp\n\t" // rbp <=> sched->running->rbp
+			"jmp *%r8\n\t"); // back to caller
 }
 
-void scheduler_wake_next(scheduler *sched){
-	__asm__("push %rbx\n\t"
-		"push %r12\n\t"
-		"push %r12\n\t"
-		"push %r13\n\t"
-		"mov %rdi, %r12\n\t");
+__attribute__((naked, optimize("O0")))
+void _co_resume_yield(scheduler *sched)
+{
+	(void) sched;
+	__asm__ volatile("pop %r8\n\t" // save ret addr
+			"mov 0x10(%rdi), %rdi\n\t" // sched.running value (ptr)
+			"xchg %r8, (%rdi)\n\t" // sched.running.yield_point <=> ret
+			"cmp %rsp, %rbp\n\t"
+			"jne 1f\n\t"
+			"push (%rdi)\n\t"
+			"1:\n\t"
+			"jmp *%r8\n\t");  // back to yield_point pre swap
+}
+
+void _co_scheduler_wake_next(scheduler *sched)
+{
+	coroutine *tmp;
 	for( ; sched->start; ){
-		__asm__("mov %r12, -0x8(%rbp)\n\t");
 		sched->running = sched->start;
 		sched->start = sched->start->next;
 		sched->running->next = NULL;
 		if(!sched->running || !sched->running->yield_point){
 			break;
 		}
-		__asm__("mov 0x10(%r12), %rbx\n\t"
-			"push %r12\n\t"
-			"push %r12\n\t"); // sched.running value (ptr)
-		if(sched->running->heap_frame){
-			_restore_context(sched); // restored %rbx still in stack
-			__asm__("mov %rbx, %r9\n\t"
-				"pop %rbx\n\t"
-				"pop %rbx\n\t"
-				"jmp *(%r9)\n\t");
+
+		_co_load_context();
+		_co_swap_context(sched);
+		// NOTE(garipew): Since this is a library, we have to reference
+		// the GOT to get globals, they could be anywhere in memory...
+		__asm__ volatile("cmp %rsp, %rbp\n\t"
+				"je 1f\n\t"
+				"call _co_restore_context\n\t"
+				"1:\n\t"
+				"mov _co_scheduler@GOTPCREL(%rip), %rdi\n\t"
+				"call _co_resume_yield\n\t"
+				"mov _co_scheduler@GOTPCREL(%rip), %rdi\n\t"
+				"call _co_swap_context\n\t");
+		_co_restore_context();
+
+		tmp = sched->running;
+		sched->running = NULL;
+		if(tmp->rsp == tmp->rbp){
+			continue;
 		}
-		__asm__("call *(%rbx)\n\t"
-			"pop %r12\n\t"
-			"pop %r12\n\t");
+		if(!sched->start){
+			sched->start = tmp;
+			sched->end = tmp;
+			continue;
+		}
+		sched->end->next = tmp;
+		sched->end = tmp;
 	}
-	__asm__("pop %r13\n\t"
-		"pop %r12\n\t"
-		"pop %r12\n\t"
-		"pop %rbx\n\t");
 	arena_free(&_co_arena);
+	arena_free(&_co_frame);
 }

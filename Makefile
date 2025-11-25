@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -Wextra -pedantic -std=c99 -g
+CFLAGS=-Wall -Wextra -std=c99 -g -O3
 CLIBS=-I/usr/local/include/snorkel -L/usr/local/lib -lsnorkel
 
 build: libsnorkel.so
