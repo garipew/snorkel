@@ -233,7 +233,7 @@ void coroutine_create(void (*routine)(void))
 {
 	coroutine *new = arena_alloc(&_co_arena, sizeof(*new), ALIGNOF(*new));
 	new->yield_point = (void*)routine;
-	new->heap_frame = arena_alloc(&_co_frame, FRAME_SIZE, 1);
+	new->heap_frame = arena_alloc(&_co_frame, FRAME_SIZE, 8);
 	new->rsp = new->heap_frame + FRAME_SIZE;
 	new->rbp = new->rsp;
 	if(!_co_scheduler.start){
@@ -289,14 +289,17 @@ __attribute__((naked, optimize("O0")))
 void _co_resume_yield(scheduler *sched)
 {
 	(void) sched;
-	__asm__ volatile("pop %r8\n\t" // save ret addr
-			"mov 0x10(%rdi), %rdi\n\t" // sched.running value (ptr)
-			"xchg %r8, (%rdi)\n\t" // sched.running.yield_point <=> ret
-			"cmp %rsp, %rbp\n\t"
+	__asm__ volatile("pop %%r8\n\t" // save ret addr
+			"mov 0x10(%%rdi), %%rdi\n\t" // sched.running value (ptr)
+			"xchg %%r8, (%%rdi)\n\t" // sched.running.yield_point <=> ret
+			"mov 0x20(%%rdi), %%r9\n\t"
+			"add $%c0, %%r9\n\t" // r9 = sched.running.heap_frame + FRAME_SIZE
+			"cmp %%rsp, %%r9\n\t"
 			"jne 1f\n\t"
-			"push (%rdi)\n\t"
+			"push (%%rdi)\n\t"
 			"1:\n\t"
-			"jmp *%r8\n\t");  // back to yield_point pre swap
+			"jmp *%%r8\n\t"
+			: : "i"(FRAME_SIZE));  // back to yield_point pre swap
 }
 
 void _co_scheduler_wake_next(scheduler *sched)
@@ -314,19 +317,24 @@ void _co_scheduler_wake_next(scheduler *sched)
 		_co_swap_context(sched);
 		// NOTE(garipew): Since this is a library, we have to reference
 		// the GOT to get globals, they could be anywhere in memory...
-		__asm__ volatile("cmp %rsp, %rbp\n\t"
+		__asm__ volatile("mov _co_scheduler@GOTPCREL(%%rip), %%r9\n\t"
+				"mov 0x10(%%r9), %%r9\n\t"
+				"mov 0x20(%%r9), %%r9\n\t"
+				"add $%c0, %%r9\n\t" // r9 = sched.running.heap_frame + FRAME_SIZE
+				"cmp %%rsp, %%r9\n\t"
 				"je 1f\n\t"
 				"call _co_restore_context\n\t"
 				"1:\n\t"
-				"mov _co_scheduler@GOTPCREL(%rip), %rdi\n\t"
+				"mov _co_scheduler@GOTPCREL(%%rip), %%rdi\n\t"
 				"call _co_resume_yield\n\t"
-				"mov _co_scheduler@GOTPCREL(%rip), %rdi\n\t"
-				"call _co_swap_context\n\t");
+				"mov _co_scheduler@GOTPCREL(%%rip), %%rdi\n\t"
+				"call _co_swap_context\n\t"
+				: : "i"(FRAME_SIZE));
 		_co_restore_context();
 
 		tmp = sched->running;
 		sched->running = NULL;
-		if(tmp->rsp == tmp->rbp){
+		if(tmp->rsp == tmp->heap_frame + FRAME_SIZE){
 			continue;
 		}
 		if(!sched->start){

@@ -71,7 +71,6 @@ struct coroutine {
 	u8 *rbp;
 	coroutine *next;
 
-	size_t frame_size;
 	u8 *heap_frame;
 };
 
