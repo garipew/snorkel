@@ -233,7 +233,7 @@ void coroutine_create(void (*routine)(void))
 {
 	coroutine *new = arena_alloc(&_co_arena, sizeof(*new), ALIGNOF(*new));
 	new->yield_point = (void*)routine;
-	new->heap_frame = arena_alloc(&_co_frame, FRAME_SIZE, 8);
+	new->heap_frame = arena_alloc(&_co_frame, FRAME_SIZE, 16);
 	new->rsp = new->heap_frame + FRAME_SIZE;
 	new->rbp = new->rsp;
 	if(!_co_scheduler.start){
