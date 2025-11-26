@@ -302,6 +302,34 @@ void _co_resume_yield(scheduler *sched)
 			: : "i"(FRAME_SIZE));  // back to yield_point pre swap
 }
 
+__attribute__((naked, optimize("O0")))
+void _co_yield()
+{
+	_co_load_context();
+	_co_swap_context(&_co_scheduler);
+	__asm__ volatile("mov _co_scheduler@GOTPCREL(%%rip), %%r9\n\t"
+			"mov 0x10(%%r9), %%r9\n\t"
+			"mov 0x20(%%r9), %%r9\n\t"
+			"add $%c0, %%r9\n\t"
+			"cmp %%rsp, %%r9\n\t" //rsp == heap_frame + FRAME_SIZE ?
+			"je 1f\n\t"
+			"call _co_restore_context\n\t"
+			"1:\n\t"
+			: : "i"(FRAME_SIZE));
+	_co_resume_yield(&_co_scheduler);
+	__asm__ volatile("mov _co_scheduler@GOTPCREL(%%rip), %%rdi\n\t"
+			"mov 0x10(%%rdi), %%r9\n\t"
+			"mov 0x20(%%r9), %%r9\n\t"
+			"add $%c0, %%r9\n\t"
+			"cmp %%rsp, %%r9\n\t"
+			"jne 1f\n\t"
+			"call _co_swap_context\n\t"
+			"call _co_restore_context\n\t"
+			"1:\n\t"
+			"ret\n\t"
+			: : "i"(FRAME_SIZE));
+}
+
 void _co_scheduler_wake_next(scheduler *sched)
 {
 	coroutine *tmp;
@@ -313,24 +341,8 @@ void _co_scheduler_wake_next(scheduler *sched)
 			break;
 		}
 
-		_co_load_context();
-		_co_swap_context(sched);
-		// NOTE(garipew): Since this is a library, we have to reference
-		// the GOT to get globals, they could be anywhere in memory...
-		__asm__ volatile("mov _co_scheduler@GOTPCREL(%%rip), %%r9\n\t"
-				"mov 0x10(%%r9), %%r9\n\t"
-				"mov 0x20(%%r9), %%r9\n\t"
-				"add $%c0, %%r9\n\t" // r9 = sched.running.heap_frame + FRAME_SIZE
-				"cmp %%rsp, %%r9\n\t"
-				"je 1f\n\t"
-				"call _co_restore_context\n\t"
-				"1:\n\t"
-				"mov _co_scheduler@GOTPCREL(%%rip), %%rdi\n\t"
-				"call _co_resume_yield\n\t"
-				"mov _co_scheduler@GOTPCREL(%%rip), %%rdi\n\t"
-				"call _co_swap_context\n\t"
-				: : "i"(FRAME_SIZE));
-		_co_restore_context();
+		// NOTE(garipew): META FTW
+		yield;
 
 		tmp = sched->running;
 		sched->running = NULL;

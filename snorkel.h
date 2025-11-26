@@ -85,13 +85,13 @@ extern Arena _co_arena;
 extern Arena _co_frame;
 
 #define yield \
-	_co_load_context(); \
-	_co_resume_yield(&_co_scheduler)
+	_co_yield()
 
 #define coroutine_start() \
 	_co_scheduler_wake_next(&_co_scheduler)
 
 void coroutine_create(void (*)(void));
+void _co_yield();
 void _co_restore_context();
 void _co_load_context();
 void _co_swap_context(scheduler*);
