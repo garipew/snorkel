@@ -229,7 +229,7 @@ Arena _co_arena = {0};
 Arena _co_frame = {0};
 scheduler _co_scheduler = {0};
 
-void coroutine_create(void (*routine)(void*), void *arg)
+coroutine* coroutine_create(void (*routine)(void*), void *arg)
 {
 	coroutine *new = arena_alloc(&_co_arena, sizeof(*new), ALIGNOF(*new));
 	new->yield_point = (void*)routine;
@@ -240,10 +240,11 @@ void coroutine_create(void (*routine)(void*), void *arg)
 	if(!_co_scheduler.start){
 		_co_scheduler.start = new;
 		_co_scheduler.end = new;
-		return;
+		return new;
 	}
 	_co_scheduler.end->next = new;
 	_co_scheduler.end = new;
+	return new;
 }
 
 // NOTE(garipew): Naked are also never inlined.
@@ -345,32 +346,47 @@ void _co_yield(const char *caller)
 			: : "i"(FRAME_SIZE));
 }
 
+void _co_step(scheduler *sched, coroutine *co)
+{
+	if(!co){
+		return; // coroutine does not exist
+	}
+	coroutine *tmp;
+	sched->running = co;
+	for(tmp = sched->start; tmp && tmp->next != co; tmp = tmp->next);
+	if(co == sched->end){
+		sched->end = tmp;
+	}
+	if(tmp){
+		tmp->next = co->next;
+	}else if(co == sched->start){
+		sched->start = sched->start->next;
+	}else{
+		sched->running = NULL;
+		return; // coroutine isn't scheduled, possibly already returned
+	}
+	co->next = NULL;
+
+	yield;
+	tmp = sched->running;
+	sched->running = NULL;
+	if(tmp->rsp == tmp->heap_frame + FRAME_SIZE){
+		return; // coroutine returned
+	}
+	if(!sched->start){
+		sched->start = tmp;
+		sched->end = tmp;
+		return; // coroutine yielded, it is the only scheduled
+	}
+	sched->end->next = tmp;
+	sched->end = tmp;
+	return; // coroutine yielded
+}
+
 void _co_scheduler_wake_next(scheduler *sched)
 {
-	coroutine *tmp;
 	for( ; sched->start; ){
-		sched->running = sched->start;
-		sched->start = sched->start->next;
-		sched->running->next = NULL;
-		if(!sched->running || !sched->running->yield_point){
-			break;
-		}
-
-		// NOTE(garipew): META FTW
-		yield;
-
-		tmp = sched->running;
-		sched->running = NULL;
-		if(tmp->rsp == tmp->heap_frame + FRAME_SIZE){
-			continue;
-		}
-		if(!sched->start){
-			sched->start = tmp;
-			sched->end = tmp;
-			continue;
-		}
-		sched->end->next = tmp;
-		sched->end = tmp;
+		_co_step(sched, sched->start);
 	}
 	arena_free(&_co_arena);
 	arena_free(&_co_frame);

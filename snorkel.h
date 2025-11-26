@@ -91,11 +91,15 @@ extern Arena _co_frame;
 #define coroutine_start() \
 	_co_scheduler_wake_next(&_co_scheduler)
 
-void coroutine_create(void (*)(void*), void*);
+#define coroutine_step(co) \
+	_co_step(&_co_scheduler, co)
+
+coroutine* coroutine_create(void (*)(void*), void*);
 void _co_yield(const char*);
 void _co_restore_context();
 void _co_load_context();
 void _co_swap_context(scheduler*);
 void _co_resume_yield(scheduler*);
+void _co_step(scheduler*, coroutine*);
 void _co_scheduler_wake_next(scheduler*);
 #endif // SNORKEL_H
