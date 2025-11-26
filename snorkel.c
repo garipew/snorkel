@@ -303,8 +303,14 @@ void _co_resume_yield(scheduler *sched)
 }
 
 __attribute__((naked, optimize("O0")))
-void _co_yield()
+void _co_yield(const char *caller)
 {
+	if(!_co_scheduler.running){
+		fprintf(stderr,
+			"ERROR: yield when no coroutine is running from %s\n",
+			caller);
+		exit(1);
+	}
 	_co_load_context();
 	_co_swap_context(&_co_scheduler);
 	__asm__ volatile("mov _co_scheduler@GOTPCREL(%%rip), %%r9\n\t"
@@ -317,6 +323,9 @@ void _co_yield()
 			"1:\n\t"
 			: : "i"(FRAME_SIZE));
 	_co_resume_yield(&_co_scheduler);
+	// TODO(garipew): This entire check is only useful when coroutine ret,
+	// without it, the context is not unswapped and there is no way back to
+	// scheduler_wake_next, but checking every yield doesn't seem elegant
 	__asm__ volatile("mov _co_scheduler@GOTPCREL(%%rip), %%rdi\n\t"
 			"mov 0x10(%%rdi), %%r9\n\t"
 			"mov 0x20(%%r9), %%r9\n\t"

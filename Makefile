@@ -32,7 +32,7 @@ uninstall:
 
 tests/%.test: tests/%.c
 	@$(CC) $(CFLAGS) $< -o $@ $(CLIBS)
-	@./$@ | diff -q $(addsuffix .ok, $(basename $@)) - || \
+	@./$@ 2>&1 | diff -q $(addsuffix .ok, $(basename $@)) - || \
 		(echo "Test $@ failed" && rm -rf $@ && exit 1)
 	@rm -rf tests/*.test
 	@echo "$(notdir $@) OK"
