@@ -229,13 +229,14 @@ Arena _co_arena = {0};
 Arena _co_frame = {0};
 scheduler _co_scheduler = {0};
 
-void coroutine_create(void (*routine)(void))
+void coroutine_create(void (*routine)(void*), void *arg)
 {
 	coroutine *new = arena_alloc(&_co_arena, sizeof(*new), ALIGNOF(*new));
 	new->yield_point = (void*)routine;
 	new->heap_frame = arena_alloc(&_co_frame, FRAME_SIZE, 16);
 	new->rsp = new->heap_frame + FRAME_SIZE;
 	new->rbp = new->rsp;
+	new->arg = arg;
 	if(!_co_scheduler.start){
 		_co_scheduler.start = new;
 		_co_scheduler.end = new;
@@ -298,6 +299,11 @@ void _co_resume_yield(scheduler *sched)
 			"jne 1f\n\t"
 			"push (%%rdi)\n\t"
 			"1:\n\t"
+			"mov 0x28(%%rdi), %%r9\n\t"
+			"test %%r9, %%r9\n\t" // sched.running.arg ?
+			"jz 2f\n\t"
+			"mov %%r9, %%rdi\n\t"
+			"2:\n\t"
 			"jmp *%%r8\n\t"
 			: : "i"(FRAME_SIZE));  // back to yield_point pre swap
 }

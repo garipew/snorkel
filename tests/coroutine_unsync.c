@@ -16,8 +16,8 @@ void co_smaller(){
 }
 
 int main(){
-	coroutine_create(co_larger);
-	coroutine_create(co_smaller);
+	coroutine_create(co_larger, NULL);
+	coroutine_create(co_smaller, NULL);
 	coroutine_start();
 	return 0;
 }
