@@ -7,6 +7,15 @@ general use library. That being said, feel free to take a look and help me out,
 I hope I am not commiting any grotesque error, but as they say, two heads think
 better than one. Your help will be much apreciated! :)
 
+```
+make
+```
+
+And
+```
+sudo make install
+```
+
 ## Arenas
 Arenas were the starting point of snorkel, it was very fun to implement and so
 rewarding! Never again I am going back to the malloc/free nightmare...
@@ -26,6 +35,15 @@ I never really understood the application of coroutines, until I started making
 my [chip8 emulator](https://github.com/garipew/cemu8) and decided to play
 around with asynchronous IO operations. And then, all the potential struck me,
 so, as any normal person would, I decided to give it a try and implement it!   
+
+## tests
+Since I am already doing all this, I shall seize the opportunity to delve into
+testing
+
+Run the tests with
+```
+make test
+```
 
 ## Notes
 I intend to let this repo grow as time passes, slowly. That's all for now!
