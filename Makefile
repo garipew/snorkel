@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -Wextra -std=c99 -g -O3
+CFLAGS=-Wall -Wextra -Wno-cast-function-type -std=c99 -g -O3
 CLIBS=-I/usr/local/include/snorkel -L/usr/local/lib -lsnorkel
 
 .PHONY: build install uninstall all clean test
@@ -33,6 +33,6 @@ uninstall:
 tests/%.test: tests/%.c
 	@$(CC) $(CFLAGS) $< -o $@ $(CLIBS)
 	@./$@ 2>&1 | diff -q $(addsuffix .ok, $(basename $@)) - || \
-		(echo "Test $@ failed" && rm -rf $@ && exit 1)
+		(echo "Test $@ failed" && exit 1)
 	@rm -rf tests/*.test
 	@echo "$(notdir $@) OK"

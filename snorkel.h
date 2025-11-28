@@ -85,21 +85,18 @@ extern scheduler _co_scheduler;
 extern Arena _co_arena;
 extern Arena _co_frame;
 
-#define yield \
-	_co_yield(__func__)
-
 #define coroutine_start() \
 	_co_scheduler_wake_next(&_co_scheduler)
 
 #define coroutine_step(co) \
 	_co_step(&_co_scheduler, co)
 
-coroutine* coroutine_create(void (*)(void*), void*);
-void _co_yield(const char*);
+coroutine* coroutine_create(void* (*)(void*), void*);
+void* yield(void*);
 void _co_restore_context();
 void _co_load_context();
 void _co_swap_context(scheduler*);
-void _co_resume_yield(scheduler*);
-void _co_step(scheduler*, coroutine*);
+void* _co_resume_yield(scheduler*, void*);
+void* _co_step(scheduler*, coroutine*);
 void _co_scheduler_wake_next(scheduler*);
 #endif // SNORKEL_H

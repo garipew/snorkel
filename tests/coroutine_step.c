@@ -1,11 +1,12 @@
 #include <snorkel.h>
 #include <stdio.h>
 
-void co_step(){
+void* co_step(){
 	for(int i = 0; i < 10; i++){
 		printf("%d\n", i);
-		yield;
+		yield(NULL);
 	}
+	return NULL;
 }
 
 int main(){

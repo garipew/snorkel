@@ -1,12 +1,13 @@
 #include <snorkel.h>
 #include <stdio.h>
 
-void co_arg(void *arg){
+void* co_arg(void *arg){
 	int n = (uintptr_t)arg;
 	for(int i = 0; i < n; i++){
 		printf("%d\n", i);
-		yield;
+		yield(NULL);
 	}
+	return NULL;
 }
 
 int main(){

@@ -229,7 +229,7 @@ Arena _co_arena = {0};
 Arena _co_frame = {0};
 scheduler _co_scheduler = {0};
 
-coroutine* coroutine_create(void (*routine)(void*), void *arg)
+coroutine* coroutine_create(void* (*routine)(void*), void *arg)
 {
 	coroutine *new = arena_alloc(&_co_arena, sizeof(*new), ALIGNOF(*new));
 	new->yield_point = (void*)routine;
@@ -288,9 +288,10 @@ void _co_swap_context(scheduler *sched)
 }
 
 __attribute__((naked, optimize("O0")))
-void _co_resume_yield(scheduler *sched)
+void* _co_resume_yield(scheduler *sched, void *yieldval)
 {
 	(void) sched;
+	(void) yieldval;
 	__asm__ volatile("pop %%r8\n\t" // save ret addr
 			"mov 0x10(%%rdi), %%rdi\n\t" // sched.running value (ptr)
 			"xchg %%r8, (%%rdi)\n\t" // sched.running.yield_point <=> ret
@@ -305,22 +306,27 @@ void _co_resume_yield(scheduler *sched)
 			"jz 2f\n\t"
 			"mov %%r9, %%rdi\n\t"
 			"2:\n\t"
+			"mov %%rsi, %%rax\n\t"
 			"jmp *%%r8\n\t"
 			: : "i"(FRAME_SIZE));  // back to yield_point pre swap
 }
 
 __attribute__((naked, optimize("O0")))
-void _co_yield(const char *caller)
+void* yield(void* yieldval)
 {
+	(void)yieldval;
 	if(!_co_scheduler.running){
 		fprintf(stderr,
-			"ERROR: yield when no coroutine is running from %s\n",
-			caller);
+			"ERROR: yield call when no coroutine is running\n");
 		exit(1);
 	}
+	__asm__ volatile("push %rdi\n\t"
+			"push %rdi\n\t");
 	_co_load_context();
+	__asm__ volatile("mov 0x30(%rsp), %rbx\n\t");
 	_co_swap_context(&_co_scheduler);
-	__asm__ volatile("mov _co_scheduler@GOTPCREL(%%rip), %%r9\n\t"
+	__asm__ volatile("mov %%rbx, %%rsi\n\t"
+			"mov _co_scheduler@GOTPCREL(%%rip), %%r9\n\t"
 			"mov 0x10(%%r9), %%r9\n\t"
 			"mov 0x20(%%r9), %%r9\n\t"
 			"add $%c0, %%r9\n\t"
@@ -328,28 +334,33 @@ void _co_yield(const char *caller)
 			"je 1f\n\t"
 			"call _co_restore_context\n\t"
 			"1:\n\t"
+			"mov _co_scheduler@GOTPCREL(%%rip), %%rdi\n\t"
+			"call _co_resume_yield\n\t"
 			: : "i"(FRAME_SIZE));
-	_co_resume_yield(&_co_scheduler);
-	// TODO(garipew): This entire check is only useful when coroutine ret,
-	// without it, the context is not unswapped and there is no way back to
-	// scheduler_wake_next, but checking every yield doesn't seem elegant
+	// TODO(garipew): Checking every yield if coroutine returned doesn't
+	// seem elegant.
 	__asm__ volatile("mov _co_scheduler@GOTPCREL(%%rip), %%rdi\n\t"
 			"mov 0x10(%%rdi), %%r9\n\t"
 			"mov 0x20(%%r9), %%r9\n\t"
 			"add $%c0, %%r9\n\t"
 			"cmp %%rsp, %%r9\n\t"
 			"jne 1f\n\t"
+			"mov %%rax, %%rbx\n\t"
 			"call _co_swap_context\n\t"
+			"mov %%rbx, %%rsi\n\t"
 			"call _co_restore_context\n\t"
+			"mov %%rsi, %%rax\n\t"
 			"1:\n\t"
+			"pop %%rdi\n\t"
+			"pop %%rdi\n\t"
 			"ret\n\t"
 			: : "i"(FRAME_SIZE));
 }
 
-void _co_step(scheduler *sched, coroutine *co)
+void* _co_step(scheduler *sched, coroutine *co)
 {
 	if(!co){
-		return; // coroutine does not exist
+		return NULL; // coroutine does not exist
 	}
 	coroutine *tmp;
 	sched->running = co;
@@ -363,24 +374,24 @@ void _co_step(scheduler *sched, coroutine *co)
 		sched->start = sched->start->next;
 	}else{
 		sched->running = NULL;
-		return; // coroutine isn't scheduled, possibly already returned
+		return NULL; // coroutine isn't scheduled, possibly already returned
 	}
 	co->next = NULL;
 
-	yield;
+	void *yieldval = yield(NULL);
 	tmp = sched->running;
 	sched->running = NULL;
 	if(tmp->rsp == tmp->heap_frame + FRAME_SIZE){
-		return; // coroutine returned
+		return yieldval; // coroutine returned
 	}
 	if(!sched->start){
 		sched->start = tmp;
 		sched->end = tmp;
-		return; // coroutine yielded, it is the only scheduled
+		return yieldval; // coroutine yielded, it is the only scheduled
 	}
 	sched->end->next = tmp;
 	sched->end = tmp;
-	return; // coroutine yielded
+	return yieldval; // coroutine yielded
 }
 
 void _co_scheduler_wake_next(scheduler *sched)

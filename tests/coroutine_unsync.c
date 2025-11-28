@@ -1,18 +1,20 @@
 #include <snorkel.h>
 #include <stdio.h>
 
-void co_larger(){
+void* co_larger(){
 	for(int i = 0; i < 10; i++){
 		printf("%d\n", i);
-		yield;
+		yield(NULL);
 	}
+	return NULL;
 }
 
-void co_smaller(){
+void* co_smaller(){
 	for(int i = 0; i < 5; i++){
 		printf("%d\n", i);
-		yield;
+		yield(NULL);
 	}
+	return NULL;
 }
 
 int main(){

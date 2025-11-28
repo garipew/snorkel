@@ -1,1 +1,1 @@
-ERROR: yield when no coroutine is running from function
+ERROR: yield call when no coroutine is running
