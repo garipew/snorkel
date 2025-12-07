@@ -227,23 +227,25 @@ string* string_substr(Arena *a, string *str, int start, int end){
 
 Arena _co_arena = {0};
 Arena _co_frame = {0};
-scheduler _co_scheduler = {0};
+struct _co_scheduler _co_sched_std = {0};
+struct _co_scheduler *_co_sched = &_co_sched_std;
 
-coroutine* coroutine_create(void* (*routine)(void*), void *arg)
+coroutine* (coroutine_create)(void* (*routine)(void*), void *arg, struct optsched optsched)
 {
+	_co_sched = optsched.sched;
 	coroutine *new = arena_alloc(&_co_arena, sizeof(*new), ALIGNOF(*new));
 	new->yield_point = (void*)routine;
 	new->heap_frame = arena_alloc(&_co_frame, FRAME_SIZE, 16);
 	new->rsp = new->heap_frame + FRAME_SIZE;
 	new->rbp = new->rsp;
 	new->arg = arg;
-	if(!_co_scheduler.start){
-		_co_scheduler.start = new;
-		_co_scheduler.end = new;
+	if(!_co_sched->start){
+		_co_sched->start = new;
+		_co_sched->end = new;
 		return new;
 	}
-	_co_scheduler.end->next = new;
-	_co_scheduler.end = new;
+	_co_sched->end->next = new;
+	_co_sched->end = new;
 	return new;
 }
 
@@ -277,7 +279,7 @@ void _co_load_context()
 }
 
 __attribute__((naked, optimize("O0")))
-void _co_swap_context(scheduler *sched)
+void _co_swap_context(struct _co_scheduler *sched)
 {
 	(void) sched;
 	__asm__ volatile("pop %r8\n\t" // save ret addr
@@ -288,7 +290,7 @@ void _co_swap_context(scheduler *sched)
 }
 
 __attribute__((naked, optimize("O0")))
-void* _co_resume_yield(scheduler *sched, void *yieldval)
+void* _co_resume_yield(struct _co_scheduler *sched, void *yieldval)
 {
 	(void) sched;
 	(void) yieldval;
@@ -315,7 +317,7 @@ __attribute__((naked, optimize("O0")))
 void* yield(void* yieldval)
 {
 	(void)yieldval;
-	if(!_co_scheduler.running){
+	if(!_co_sched->running){
 		fprintf(stderr,
 			"ERROR: yield call when no coroutine is running\n");
 		exit(1);
@@ -324,9 +326,10 @@ void* yield(void* yieldval)
 			"push %rdi\n\t");
 	_co_load_context();
 	__asm__ volatile("mov 0x30(%rsp), %rbx\n\t");
-	_co_swap_context(&_co_scheduler);
+	_co_swap_context(_co_sched);
 	__asm__ volatile("mov %%rbx, %%rsi\n\t"
-			"mov _co_scheduler@GOTPCREL(%%rip), %%r9\n\t"
+			"mov _co_sched@GOTPCREL(%%rip), %%r9\n\t" // r9 = &_co_sched
+			"mov (%%r9), %%r9\n\t"
 			"mov 0x10(%%r9), %%r9\n\t"
 			"mov 0x20(%%r9), %%r9\n\t"
 			"add $%c0, %%r9\n\t"
@@ -334,12 +337,14 @@ void* yield(void* yieldval)
 			"je 1f\n\t"
 			"call _co_restore_context\n\t"
 			"1:\n\t"
-			"mov _co_scheduler@GOTPCREL(%%rip), %%rdi\n\t"
+			"mov _co_sched@GOTPCREL(%%rip), %%rdi\n\t"
+			"mov (%%rdi), %%rdi\n\t"
 			"call _co_resume_yield\n\t"
 			: : "i"(FRAME_SIZE));
 	// TODO(garipew): Checking every yield if coroutine returned doesn't
 	// seem elegant.
-	__asm__ volatile("mov _co_scheduler@GOTPCREL(%%rip), %%rdi\n\t"
+	__asm__ volatile("mov _co_sched@GOTPCREL(%%rip), %%rdi\n\t"
+			"mov (%%rdi), %%rdi\n\t"
 			"mov 0x10(%%rdi), %%r9\n\t"
 			"mov 0x20(%%r9), %%r9\n\t"
 			"add $%c0, %%r9\n\t"
@@ -357,47 +362,49 @@ void* yield(void* yieldval)
 			: : "i"(FRAME_SIZE));
 }
 
-void* _co_step(scheduler *sched, coroutine *co)
+void* (coroutine_step)(coroutine *co, struct optsched optsched)
 {
 	if(!co){
 		return NULL; // coroutine does not exist
 	}
 	coroutine *tmp;
-	sched->running = co;
-	for(tmp = sched->start; tmp && tmp->next != co; tmp = tmp->next);
-	if(co == sched->end){
-		sched->end = tmp;
+	_co_sched = optsched.sched;
+	_co_sched->running = co;
+	for(tmp = _co_sched->start; tmp && tmp->next != co; tmp = tmp->next);
+	if(co == _co_sched->end){
+		_co_sched->end = tmp;
 	}
 	if(tmp){
 		tmp->next = co->next;
-	}else if(co == sched->start){
-		sched->start = sched->start->next;
+	}else if(co == _co_sched->start){
+		_co_sched->start = _co_sched->start->next;
 	}else{
-		sched->running = NULL;
+		_co_sched->running = NULL;
 		return NULL; // coroutine isn't scheduled, possibly already returned
 	}
 	co->next = NULL;
 
 	void *yieldval = yield(NULL);
-	tmp = sched->running;
-	sched->running = NULL;
+	tmp = _co_sched->running;
+	_co_sched->running = NULL;
 	if(tmp->rsp == tmp->heap_frame + FRAME_SIZE){
 		return yieldval; // coroutine returned
 	}
-	if(!sched->start){
-		sched->start = tmp;
-		sched->end = tmp;
+	if(!_co_sched->start){
+		_co_sched->start = tmp;
+		_co_sched->end = tmp;
 		return yieldval; // coroutine yielded, it is the only scheduled
 	}
-	sched->end->next = tmp;
-	sched->end = tmp;
+	_co_sched->end->next = tmp;
+	_co_sched->end = tmp;
 	return yieldval; // coroutine yielded
 }
 
-void _co_scheduler_wake_next(scheduler *sched)
+void _co_wake_next(struct optsched optsched)
 {
+	struct _co_scheduler *sched = optsched.sched;
 	for( ; sched->start; ){
-		_co_step(sched, sched->start);
+		coroutine_step(sched->start, .sched=optsched.sched);
 	}
 	arena_free(&_co_arena);
 	arena_free(&_co_frame);

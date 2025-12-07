@@ -75,28 +75,36 @@ struct coroutine {
 	void *arg;
 };
 
-typedef struct {
+struct _co_scheduler{
 	coroutine *start;
 	coroutine *end;
 	coroutine *running;
-} scheduler;
+};
 
-extern scheduler _co_scheduler;
+struct optsched{
+	struct _co_scheduler *sched;
+};
+
+extern struct _co_scheduler _co_sched_std;
+extern struct _co_scheduler *_co_sched;
 extern Arena _co_arena;
 extern Arena _co_frame;
 
-#define coroutine_start() \
-	_co_scheduler_wake_next(&_co_scheduler)
+#define coroutine_start(...) \
+	_co_wake_next((struct optsched){.sched=&_co_sched_std,__VA_ARGS__})
 
-#define coroutine_step(co) \
-	_co_step(&_co_scheduler, co)
+#define coroutine_step(co, ...) \
+	coroutine_step(co, (struct optsched){.sched=&_co_sched_std,__VA_ARGS__})
 
-coroutine* coroutine_create(void* (*)(void*), void*);
+#define coroutine_create(r, a, ...) \
+	coroutine_create(r, a, (struct optsched){.sched=&_co_sched_std,__VA_ARGS__})
+
+coroutine* (coroutine_create)(void* (*)(void*), void*, struct optsched);
 void* yield(void*);
 void _co_restore_context();
 void _co_load_context();
-void _co_swap_context(scheduler*);
-void* _co_resume_yield(scheduler*, void*);
-void* _co_step(scheduler*, coroutine*);
-void _co_scheduler_wake_next(scheduler*);
+void _co_swap_context(struct _co_scheduler*);
+void* _co_resume_yield(struct _co_scheduler*, void*);
+void* (coroutine_step)(coroutine*, struct optsched sched);
+void _co_wake_next(struct optsched sched);
 #endif // SNORKEL_H

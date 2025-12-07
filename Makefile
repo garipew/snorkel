@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -Wextra -Wno-cast-function-type -std=c99 -g -O3
+CFLAGS=-Wall -Wextra -Wno-cast-function-type -Wno-override-init -std=c99 -g -O3
 CLIBS=-I/usr/local/include/snorkel -L/usr/local/lib -lsnorkel
 
 .PHONY: build install uninstall all clean test
