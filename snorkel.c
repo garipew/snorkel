@@ -400,7 +400,7 @@ void* (coroutine_step)(coroutine *co, struct optsched optsched)
 	return yieldval; // coroutine yielded
 }
 
-void _co_wake_next(struct optsched optsched)
+void (coroutine_start)(struct optsched optsched)
 {
 	struct _co_scheduler *sched = optsched.sched;
 	for( ; sched->start; ){

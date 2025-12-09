@@ -91,7 +91,7 @@ extern Arena _co_arena;
 extern Arena _co_frame;
 
 #define coroutine_start(...) \
-	_co_wake_next((struct optsched){.sched=&_co_sched_std,__VA_ARGS__})
+	coroutine_start((struct optsched){.sched=&_co_sched_std,__VA_ARGS__})
 
 #define coroutine_step(co, ...) \
 	coroutine_step(co, (struct optsched){.sched=&_co_sched_std,__VA_ARGS__})
@@ -106,5 +106,5 @@ void _co_load_context();
 void _co_swap_context(struct _co_scheduler*);
 void* _co_resume_yield(struct _co_scheduler*, void*);
 void* (coroutine_step)(coroutine*, struct optsched sched);
-void _co_wake_next(struct optsched sched);
+void (coroutine_start)(struct optsched sched);
 #endif // SNORKEL_H
