@@ -60,8 +60,6 @@ string* string_substr(Arena*, string*, int, int);
 ///	Coroutines
 ///////////////////////////////////////////
 
-// NOTE(garipew): Threads spawned inside coroutine shall not outlive yield
-
 #define FRAME_SIZE 1048576 /* 1MB */
 
 typedef struct coroutine coroutine;
