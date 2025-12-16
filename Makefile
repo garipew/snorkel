@@ -6,7 +6,7 @@ CLIBS=-I/usr/local/include/snorkel -L/usr/local/lib -lsnorkel
 
 build: libsnorkel.so
 
-all: install co_example
+all: install
 
 test: $(addsuffix .test, $(basename $(wildcard tests/*.c))) tests/libsnorkel.so
 	@rm -rf tests/libsnorkel.so
@@ -27,7 +27,7 @@ tests/libsnorkel.so: snorkel.c snorkel.h
 	@$(CC) $(CFLAGS) snorkel.c -o tests/libsnorkel.so
 	
 clean:
-	rm -rf libsnorkel.so co_example
+	rm -rf libsnorkel.so
 
 uninstall:
 	rm -r /usr/local/include/snorkel
