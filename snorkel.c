@@ -226,16 +226,16 @@ string* string_substr(Arena *a, string *str, int start, int end){
 ///////////////////////////////////////////
 
 Arena _co_arena;
-Arena _co_frame;
 struct _co_scheduler _co_sched_std;
 static __thread struct _co_scheduler *_co_sched;
 
-coroutine* (coroutine_create)(void* (*routine)(void*), void *arg, struct optsched optsched)
+coroutine* (coroutine_create)(void* (*routine)(void*), void *arg, struct optargs optargs)
 {
-	_co_sched = optsched.sched;
-	coroutine *new = arena_alloc(&_co_arena, sizeof(*new), ALIGNOF(*new));
+	_co_sched = optargs.sched;
+	size_t total_size = round_align(sizeof(coroutine), 16) + FRAME_SIZE;
+	coroutine *new = arena_alloc(optargs.arena, total_size, ALIGNOF(*new));
 	new->yield_point = (void*)routine;
-	new->heap_frame = arena_alloc(&_co_frame, FRAME_SIZE, 16);
+	new->heap_frame = ((u8*)new)+round_align(sizeof(*new), 16);
 	new->rsp = new->heap_frame + FRAME_SIZE;
 	new->rbp = new->rsp;
 	new->arg = arg;
@@ -361,13 +361,13 @@ void* yield(void* yieldval)
 			: : "i"(FRAME_SIZE), "r"(_co_sched) : "rax");
 }
 
-void* (coroutine_step)(coroutine *co, struct optsched optsched)
+void* (coroutine_step)(coroutine *co, struct optargs optargs)
 {
 	if(!co){
 		return NULL; // coroutine does not exist
 	}
 	coroutine *tmp;
-	_co_sched = optsched.sched;
+	_co_sched = optargs.sched;
 	_co_sched->running = co;
 	for(tmp = _co_sched->start; tmp && tmp->next != co; tmp = tmp->next);
 	if(co == _co_sched->end){
@@ -399,14 +399,20 @@ void* (coroutine_step)(coroutine *co, struct optsched optsched)
 	return yieldval; // coroutine yielded
 }
 
-void (coroutine_start)(struct optsched optsched)
+void (coroutine_start)(struct optargs optargs)
 {
-	_co_sched = optsched.sched;
+	_co_sched = optargs.sched;
 	for( ; _co_sched->start; ){
 		coroutine_step(_co_sched->start, .sched=_co_sched);
 	}
-	arena_free(&_co_arena);
-	arena_free(&_co_frame);
+	arena_reset(optargs.arena);
+}
+
+void (coroutine_collect)(struct optargs optargs)
+{
+	if(optargs.arena){
+		arena_free(optargs.arena);
+	}
 }
 
 #ifdef SNORKEL_TEST

@@ -79,31 +79,35 @@ struct _co_scheduler{
 	coroutine *running;
 };
 
-struct optsched{
+struct optargs{
 	struct _co_scheduler *sched;
+	Arena *arena;
 };
 
 extern struct _co_scheduler _co_sched_std;
 extern Arena _co_arena;
-extern Arena _co_frame;
 
 #define coroutine_start(...) \
-	coroutine_start((struct optsched){.sched=&_co_sched_std,__VA_ARGS__})
+	coroutine_start((struct optargs){.sched=&_co_sched_std, .arena=&_co_arena, __VA_ARGS__})
 
 #define coroutine_step(co, ...) \
-	coroutine_step(co, (struct optsched){.sched=&_co_sched_std,__VA_ARGS__})
+	coroutine_step(co, (struct optargs){.sched=&_co_sched_std,__VA_ARGS__})
 
 #define coroutine_create(r, a, ...) \
-	coroutine_create(r, a, (struct optsched){.sched=&_co_sched_std,__VA_ARGS__})
+	coroutine_create(r, a, (struct optargs){.sched=&_co_sched_std, .arena=&_co_arena, __VA_ARGS__})
 
-coroutine* (coroutine_create)(void* (*)(void*), void*, struct optsched);
+#define coroutine_collect(...) \
+	coroutine_collect((struct optargs){.arena=&_co_arena,__VA_ARGS__})
+
+coroutine* (coroutine_create)(void* (*)(void*), void*, struct optargs);
 void* yield(void*);
 void _co_restore_context();
 void _co_load_context();
 void _co_swap_context(struct _co_scheduler*);
 void* _co_resume_yield(struct _co_scheduler*, void*);
-void* (coroutine_step)(coroutine*, struct optsched sched);
-void (coroutine_start)(struct optsched sched);
+void* (coroutine_step)(coroutine*, struct optargs);
+void (coroutine_start)(struct optargs);
+void (coroutine_collect)(struct optargs);
 
 #ifdef SNORKEL_TEST
 void* get_scheduler();

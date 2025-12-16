@@ -1,6 +1,7 @@
 #include <snorkel.h>
 #include <stdio.h>
 
+Arena my_arena;
 struct _co_scheduler my_scheduler = {0};
 
 void* co_arg(){
@@ -11,7 +12,7 @@ void* co_arg(){
 }
 
 int main(){
-	coroutine_create(co_arg, NULL, .sched=&my_scheduler);
+	coroutine_create(co_arg, NULL, .sched=&my_scheduler, .arena=&my_arena);
 	coroutine_start(.sched=&my_scheduler);
 	return 0;
 }
