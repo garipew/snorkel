@@ -225,10 +225,10 @@ string* string_substr(Arena *a, string *str, int start, int end){
 ///	Coroutines
 ///////////////////////////////////////////
 
-Arena _co_arena = {0};
-Arena _co_frame = {0};
-struct _co_scheduler _co_sched_std = {0};
-struct _co_scheduler *_co_sched = &_co_sched_std;
+Arena _co_arena;
+Arena _co_frame;
+struct _co_scheduler _co_sched_std;
+struct _co_scheduler *_co_sched;
 
 coroutine* (coroutine_create)(void* (*routine)(void*), void *arg, struct optsched optsched)
 {
@@ -317,7 +317,7 @@ __attribute__((naked, optimize("O0")))
 void* yield(void* yieldval)
 {
 	(void)yieldval;
-	if(!_co_sched->running){
+	if(!_co_sched || !_co_sched->running){
 		fprintf(stderr,
 			"ERROR: yield call when no coroutine is running\n");
 		exit(1);
@@ -402,9 +402,9 @@ void* (coroutine_step)(coroutine *co, struct optsched optsched)
 
 void (coroutine_start)(struct optsched optsched)
 {
-	struct _co_scheduler *sched = optsched.sched;
-	for( ; sched->start; ){
-		coroutine_step(sched->start, .sched=optsched.sched);
+	_co_sched = optsched.sched;
+	for( ; _co_sched->start; ){
+		coroutine_step(_co_sched->start, .sched=_co_sched);
 	}
 	arena_free(&_co_arena);
 	arena_free(&_co_frame);

@@ -18,7 +18,7 @@ install: libsnorkel.so
 	ldconfig
 
 libsnorkel.so: snorkel.c snorkel.h
-	$(CC) $(CFLAGS) -fPIC snorkel.c -shared -o libsnorkel.so
+	$(CC) $(CFLAGS) -fPIC -shared snorkel.c -o libsnorkel.so
 
 co_example: examples/co_example.c
 	$(CC) $(CFLAGS) examples/co_example.c -o co_example $(CLIBS)
