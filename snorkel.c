@@ -228,7 +228,7 @@ string* string_substr(Arena *a, string *str, int start, int end){
 Arena _co_arena;
 Arena _co_frame;
 struct _co_scheduler _co_sched_std;
-struct _co_scheduler *_co_sched;
+static struct _co_scheduler *_co_sched;
 
 coroutine* (coroutine_create)(void* (*routine)(void*), void *arg, struct optsched optsched)
 {
@@ -409,3 +409,10 @@ void (coroutine_start)(struct optsched optsched)
 	arena_free(&_co_arena);
 	arena_free(&_co_frame);
 }
+
+#ifdef SNORKEL_TEST
+void* get_scheduler()
+{
+	return (void*)_co_sched;
+}
+#endif // SNORKEL_TEST

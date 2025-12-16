@@ -84,7 +84,6 @@ struct optsched{
 };
 
 extern struct _co_scheduler _co_sched_std;
-extern struct _co_scheduler *_co_sched;
 extern Arena _co_arena;
 extern Arena _co_frame;
 
@@ -105,4 +104,9 @@ void _co_swap_context(struct _co_scheduler*);
 void* _co_resume_yield(struct _co_scheduler*, void*);
 void* (coroutine_step)(coroutine*, struct optsched sched);
 void (coroutine_start)(struct optsched sched);
+
+#ifdef SNORKEL_TEST
+void* get_scheduler();
+#endif // SNORKEL_TEST
+
 #endif // SNORKEL_H

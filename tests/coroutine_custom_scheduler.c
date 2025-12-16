@@ -4,7 +4,7 @@
 struct _co_scheduler my_scheduler = {0};
 
 void* co_arg(){
-	if(_co_sched == &my_scheduler){
+	if(get_scheduler() == &my_scheduler){
 		printf("OK!\n");
 	}
 	return NULL;

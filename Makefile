@@ -8,20 +8,23 @@ build: libsnorkel.so
 
 all: install co_example
 
-test: $(addsuffix .test, $(basename $(wildcard tests/*.c)))
+test: $(addsuffix .test, $(basename $(wildcard tests/*.c))) tests/libsnorkel.so
+	@rm -rf tests/libsnorkel.so
 
 install: libsnorkel.so
-	mkdir -p /usr/local/include/snorkel 
-	mkdir -p /usr/local/lib 
+	mkdir -p /usr/local/include/snorkel
+	mkdir -p /usr/local/lib
 	cp snorkel.h /usr/local/include/snorkel
 	cp libsnorkel.so /usr/local/lib/
 	ldconfig
 
+libsnorkel.so: CFLAGS += -fPIC -shared
 libsnorkel.so: snorkel.c snorkel.h
-	$(CC) $(CFLAGS) -fPIC -shared snorkel.c -o libsnorkel.so
+	$(CC) $(CFLAGS) snorkel.c -o libsnorkel.so
 
-co_example: examples/co_example.c
-	$(CC) $(CFLAGS) examples/co_example.c -o co_example $(CLIBS)
+tests/libsnorkel.so: CFLAGS += -fPIC -shared -DSNORKEL_TEST
+tests/libsnorkel.so: snorkel.c snorkel.h
+	@$(CC) $(CFLAGS) snorkel.c -o tests/libsnorkel.so
 	
 clean:
 	rm -rf libsnorkel.so co_example
@@ -30,8 +33,10 @@ uninstall:
 	rm -r /usr/local/include/snorkel
 	rm /usr/local/lib/libsnorkel.so
 
-tests/%.test: tests/%.c
-	@$(CC) $(CFLAGS) $< -o $@ $(CLIBS)
+tests/%.test: CFLAGS += -DSNORKEL_TEST
+tests/%.test: tests/%.c tests/libsnorkel.so
+	@$(CC) $(CFLAGS) $< -o $@ -I/usr/local/include/snorkel -Ltests -lsnorkel \
+		-Wl,-rpath,'$$ORIGIN'
 	@./$@ 2>&1 | diff -q $(addsuffix .ok, $(basename $@)) - || \
 		(echo "Test $@ failed" && exit 1)
 	@rm -rf tests/*.test
