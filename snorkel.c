@@ -228,7 +228,7 @@ string* string_substr(Arena *a, string *str, int start, int end){
 Arena _co_arena;
 Arena _co_frame;
 struct _co_scheduler _co_sched_std;
-static struct _co_scheduler *_co_sched;
+static __thread struct _co_scheduler *_co_sched;
 
 coroutine* (coroutine_create)(void* (*routine)(void*), void *arg, struct optsched optsched)
 {
@@ -317,19 +317,18 @@ __attribute__((naked, optimize("O0")))
 void* yield(void* yieldval)
 {
 	(void)yieldval;
+	__asm__ volatile("push %rdi\n\t"
+			"push %rdi\n\t");
 	if(!_co_sched || !_co_sched->running){
 		fprintf(stderr,
 			"ERROR: yield call when no coroutine is running\n");
 		exit(1);
 	}
-	__asm__ volatile("push %rdi\n\t"
-			"push %rdi\n\t");
 	_co_load_context();
 	__asm__ volatile("mov 0x30(%rsp), %rbx\n\t");
 	_co_swap_context(_co_sched);
 	__asm__ volatile("mov %%rbx, %%rsi\n\t"
-			"mov _co_sched@GOTPCREL(%%rip), %%r9\n\t" // r9 = &_co_sched
-			"mov (%%r9), %%r9\n\t"
+			"mov %1, %%r9\n\t"
 			"mov 0x10(%%r9), %%r9\n\t"
 			"mov 0x20(%%r9), %%r9\n\t"
 			"add $%c0, %%r9\n\t"
@@ -337,17 +336,17 @@ void* yield(void* yieldval)
 			"je 1f\n\t"
 			"call _co_restore_context\n\t"
 			"1:\n\t"
-			"mov _co_sched@GOTPCREL(%%rip), %%rdi\n\t"
-			"mov (%%rdi), %%rdi\n\t"
+			"mov %1, %%rdi\n\t"
 			"call _co_resume_yield\n\t"
-			: : "i"(FRAME_SIZE));
-	// TODO(garipew): Checking every yield if coroutine returned doesn't
-	// seem elegant.
-	__asm__ volatile("mov _co_sched@GOTPCREL(%%rip), %%rdi\n\t"
-			"mov (%%rdi), %%rdi\n\t"
+			: : "i"(FRAME_SIZE), "r"(_co_sched));
+	__asm__ volatile("push %rax\n\t"
+			"push %rax\n\t");
+	__asm__ volatile("mov %1, %%rdi\n\t"
 			"mov 0x10(%%rdi), %%r9\n\t"
 			"mov 0x20(%%r9), %%r9\n\t"
 			"add $%c0, %%r9\n\t"
+			"pop %%rax\n\t"
+			"pop %%rax\n\t"
 			"cmp %%rsp, %%r9\n\t"
 			"jne 1f\n\t"
 			"mov %%rax, %%rbx\n\t"
@@ -359,7 +358,7 @@ void* yield(void* yieldval)
 			"pop %%rdi\n\t"
 			"pop %%rdi\n\t"
 			"ret\n\t"
-			: : "i"(FRAME_SIZE));
+			: : "i"(FRAME_SIZE), "r"(_co_sched) : "rax");
 }
 
 void* (coroutine_step)(coroutine *co, struct optsched optsched)
