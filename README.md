@@ -60,14 +60,15 @@ You can define which Arena the coroutine will use by passing it to the
 functions coroutine_create, coroutine_start, coroutine_step and
 coroutine_collect.
 
-Arenas are never implicitly free'd. The arena passed to coroutine_start is
-resetted at it's end and it's highly encouraged to manually do the same when
-reaching the end of execution via coroutine_step.
-
-Use coroutine_collect() to free the allocated memory. In the case of usage of a
-custom arena:
+Arenas are never implicitly free'd. The arena passed to coroutine_create is
+used for some internal allocations and should not simply be free'd. Instead,
+for memory reuse, use:
 ```
-coroutine_collect(.arena=&custom_arena);
+coroutine_collect(1, .arena=&custom_arena);
+```
+And to get rid of it:
+```
+coroutine_collect(0, .arena=&custom_arena);
 ```
 
 ### On stepping

@@ -226,16 +226,25 @@ string* string_substr(Arena *a, string *str, int start, int end){
 ///////////////////////////////////////////
 
 Arena _co_arena;
+static Arena *_co_signatures;
+static Arena *_co_frames;
 struct _co_scheduler _co_sched_std;
 static __thread struct _co_scheduler *_co_sched;
 
 coroutine* (coroutine_create)(void* (*routine)(void*), void *arg, struct optargs optargs)
 {
+	if(!_co_signatures)
+	{
+		_co_signatures = arena_alloc(optargs.arena, sizeof(*_co_signatures), ALIGNOF(*_co_signatures));
+	}
+	if(!_co_frames)
+	{
+		_co_frames = arena_alloc(optargs.arena, sizeof(*_co_frames), ALIGNOF(*_co_frames));
+	}
 	_co_sched = optargs.sched;
-	size_t total_size = round_align(sizeof(coroutine), 16) + FRAME_SIZE;
-	coroutine *new = arena_alloc(optargs.arena, total_size, ALIGNOF(*new));
+	coroutine *new = arena_alloc(_co_signatures, sizeof(*new), ALIGNOF(*new));
 	new->yield_point = (void*)routine;
-	new->heap_frame = ((u8*)new)+round_align(sizeof(*new), 16);
+	new->heap_frame = arena_alloc(_co_frames, FRAME_SIZE, 16);
 	new->rsp = new->heap_frame + FRAME_SIZE;
 	new->rbp = new->rsp;
 	new->arg = arg;
@@ -405,13 +414,28 @@ void (coroutine_start)(struct optargs optargs)
 	for( ; _co_sched->start; ){
 		coroutine_step(_co_sched->start, .sched=_co_sched);
 	}
-	arena_reset(optargs.arena);
 }
 
-void (coroutine_collect)(struct optargs optargs)
+void (coroutine_collect)(int reuse, struct optargs optargs)
 {
-	if(optargs.arena){
-		arena_free(optargs.arena);
+	void (*dealloc)(Arena*) = arena_free;
+	if(reuse)
+	{
+		dealloc = arena_reset;
+	}
+	if(_co_signatures)
+	{
+		arena_free(_co_signatures);
+		_co_signatures = NULL;
+	}
+	if(_co_frames)
+	{
+		arena_free(_co_frames);
+		_co_frames = NULL;
+	}
+	if(optargs.arena)
+	{
+		dealloc(optargs.arena);
 	}
 }
 

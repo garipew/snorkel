@@ -96,8 +96,8 @@ extern Arena _co_arena;
 #define coroutine_create(r, a, ...) \
 	coroutine_create(r, a, (struct optargs){.sched=&_co_sched_std, .arena=&_co_arena, __VA_ARGS__})
 
-#define coroutine_collect(...) \
-	coroutine_collect((struct optargs){.arena=&_co_arena,__VA_ARGS__})
+#define coroutine_collect(reuse, ...) \
+	coroutine_collect(reuse, (struct optargs){.arena=&_co_arena,__VA_ARGS__})
 
 coroutine* (coroutine_create)(void* (*)(void*), void*, struct optargs);
 void* yield(void*);
@@ -107,7 +107,7 @@ void _co_swap_context(struct _co_scheduler*);
 void* _co_resume_yield(struct _co_scheduler*, void*);
 void* (coroutine_step)(coroutine*, struct optargs);
 void (coroutine_start)(struct optargs);
-void (coroutine_collect)(struct optargs);
+void (coroutine_collect)(int, struct optargs);
 
 #ifdef SNORKEL_TEST
 void* get_scheduler();
