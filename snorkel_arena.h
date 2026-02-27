@@ -3,11 +3,23 @@
 
 #define REGION_SIZE 32768 // PAGE_SIZE * 8
 
-#ifdef __GNUC__
-#define _GNU_SOURCE
-#define ALIGNOF __alignof__
+#ifdef __STDC_VERSION__
+#if __STDC_VERSION__ >= 201112L
+#include <stdalign.h>
+#if __STDC_VERSION__ >= 202311L
+#define ALIGNOF(T) alignof(T)
 #else
-#error "Compiler support not available yet"
+#define ALIGNOF(T) _Alignof(T)
+#endif // __STDC_VERSION__ >= 202311L
+#elif __STDC_VERSION__ >= 199901L
+#ifdef __GNUC__
+#define ALIGNOF(T) __alignof__(T)
+#endif // __GNUC__
+#endif // __STDC_VERSION__ >= 201112L
+#endif // __STDC_VERSION__
+       
+#ifndef ALIGNOF
+#error "Missing ALIGNOF: compiler/standard not supported"
 #endif
 
 #include <stdint.h>
