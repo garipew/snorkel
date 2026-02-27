@@ -20,6 +20,7 @@ install: libsnorkel.so
 
 libsnorkel.so: CFLAGS += -fPIC -shared
 libsnorkel.so: snorkel.c snorkel.h
+	cp snorkel_arena.h /usr/local/include/snorkel_arena.h
 	$(CC) $(CFLAGS) snorkel.c -o libsnorkel.so
 
 tests/libsnorkel.so: CFLAGS += -fPIC -shared -DSNORKEL_TEST
