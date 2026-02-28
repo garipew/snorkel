@@ -34,17 +34,26 @@ struct Region{
 	u8 *limit;
 };
 
+struct flag {
+	Region *region;
+	u8 *addr;
+	struct flag *prev;
+};
+
 typedef struct {
 	Region *start, *end;
 	Region *current;
 	size_t region_size;
 	u8 fixed_size;
+	struct flag *checkpoint;
 } Arena;
 
 void* arena_grow(Arena*, size_t);
 void* arena_alloc(Arena*, size_t, size_t);
 void arena_free(Arena*);
 void arena_reset(Arena*);
+void arena_flag(Arena*);
+void arena_restore(Arena*);
 #endif // SNORKEL_ARENA_H
 
 #ifdef SNORKEL_IMPLEMENTATION
@@ -151,6 +160,28 @@ void arena_free(Arena *arena){
 	arena->end = NULL;
 	arena->current = NULL;
 	arena->region_size = 0;
+}
+
+void arena_flag(Arena *a){
+	if(a->current == NULL){
+		return;
+	}
+	Region *current = a->current;
+	u8 *addr = current->avail;
+	struct flag *f = arena_alloc(a, sizeof(*f), ALIGNOF(*f));
+	f->region = current;
+	f->addr = addr;
+	f->prev = a->checkpoint;
+	a->checkpoint = f;
+}
+
+void arena_restore(Arena *a){
+	if(a->checkpoint == NULL){
+		return;
+	}
+	a->current = a->checkpoint->region;
+	a->current->avail = a->checkpoint->addr;
+	a->checkpoint = a->checkpoint->prev;
 }
 
 #endif // SNORKEL_IMPLEMENTATION
