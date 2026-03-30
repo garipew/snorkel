@@ -23,6 +23,8 @@ rewarding! Never again I am going back to the malloc/free nightmare...
 My implementation is still very concise, but it is slowly growing as my needs
 also grow.
 
+Now self-contained in a header-only style.
+
 ## strings
 Well, since I was already here, there's no harm in packing the length with the
 char\*. Also included some helper functions, but didn't really go too far on
