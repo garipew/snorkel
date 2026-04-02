@@ -9,7 +9,7 @@
 ///////////////////////////////////////////
 
 string* arena_create_string(Arena *arena, size_t size){
-	string *str = arena_alloc(arena, sizeof(*str)+size, ALIGNOF(*str));
+	string *str = arena_alloc(arena, sizeof(*str)+size);
 	str->size = size;
 	str->bytes = (char*)str+round_align(sizeof(*str), ALIGNOF(char));
 	return str;
@@ -136,16 +136,16 @@ coroutine* (coroutine_create)(void* (*routine)(void*), void *arg, struct optargs
 {
 	if(!_co_signatures)
 	{
-		_co_signatures = arena_alloc(optargs.arena, sizeof(*_co_signatures), ALIGNOF(*_co_signatures));
+		_co_signatures = arena_alloc(optargs.arena, sizeof(*_co_signatures));
 	}
 	if(!_co_frames)
 	{
-		_co_frames = arena_alloc(optargs.arena, sizeof(*_co_frames), ALIGNOF(*_co_frames));
+		_co_frames = arena_alloc(optargs.arena, sizeof(*_co_frames));
 	}
 	_co_sched = optargs.sched;
-	coroutine *new = arena_alloc(_co_signatures, sizeof(*new), ALIGNOF(*new));
+	coroutine *new = arena_alloc(_co_signatures, sizeof(*new));
 	new->yield_point = (void*)routine;
-	new->heap_frame = arena_alloc(_co_frames, FRAME_SIZE, 16);
+	new->heap_frame = arena_alloc(_co_frames, FRAME_SIZE);
 	new->rsp = new->heap_frame + FRAME_SIZE;
 	new->rbp = new->rsp;
 	new->arg = arg;

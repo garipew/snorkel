@@ -44,12 +44,15 @@ typedef struct {
 	Region *start, *end;
 	Region *current;
 	size_t region_size;
-	u8 fixed_size;
+	u8 align;
 	struct flag *checkpoint;
 } Arena;
 
+#define arena_set_align(arena, align) \
+	a->align = new_align
+
 void* arena_grow(Arena*, size_t);
-void* arena_alloc(Arena*, size_t, size_t);
+void* arena_alloc(Arena*, size_t);
 void arena_free(Arena*);
 void arena_reset(Arena*);
 void arena_flag(Arena*);
@@ -91,9 +94,9 @@ void* arena_grow(Arena *arena, size_t at_least){
 	return arena->current;
 }
 
-int find_space(Arena *arena, size_t size, size_t align){
+int find_space(Arena *arena, size_t size){
 	for(; arena->current; arena->current = arena->current->next){
-		if(have_space(arena->current, size, align)){
+		if(have_space(arena->current, size, arena->align)){
 			return 1;
 		}
 	}
@@ -108,12 +111,12 @@ void arena_zero(u8* dst, size_t len){
 	}
 }
 
-void* arena_alloc(Arena *arena, size_t size, size_t align){
+void* arena_alloc(Arena *arena, size_t size){
 	if(size == 0){
 		return NULL;
 	}
-	if(align == 0){
-		align = 1;
+	if(arena->align == 0){
+		arena->align = 16;
 	}
 	if(arena->start && size > arena->region_size){
 		// TODO(garipew): Unsure if this should be a thing. Right now, the first allocation
@@ -132,12 +135,12 @@ void* arena_alloc(Arena *arena, size_t size, size_t align){
 	// TODO(garipew): Right now, alloc also cleans the memory. This is nice to do, already an
 	// improvement compared to doing so in reset. But also there's some redundancy here...
 	// Maybe I could find a way to clean exactly what is going to be used and nothing more?
-	if(find_space(arena, size, align)){
+	if(find_space(arena, size)){
 		arena_zero(arena->current->avail, arena->current->limit-arena->current->avail);
 	}else if(!arena_grow(arena, size)){
 		return NULL;
 	}
-	void *new_ptr = (void*)round_align((uintptr_t)arena->current->avail, align);
+	void *new_ptr = (void*)round_align((uintptr_t)arena->current->avail, arena->align);
 	arena->current->avail = (void*)(size+(uintptr_t)new_ptr);
 	return new_ptr;
 }
@@ -168,7 +171,7 @@ void arena_flag(Arena *a){
 	}
 	Region *current = a->current;
 	u8 *addr = current->avail;
-	struct flag *f = arena_alloc(a, sizeof(*f), ALIGNOF(*f));
+	struct flag *f = arena_alloc(a, sizeof(*f));
 	f->region = current;
 	f->addr = addr;
 	f->prev = a->checkpoint;
