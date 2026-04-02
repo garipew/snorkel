@@ -69,6 +69,9 @@ void arena_restore(Arena*);
 #define have_space(region, size, align) \
 	(round_align((uintptr_t)region->avail, align) + size < (uintptr_t)region->limit)
 
+#define get_next_aligned(arena) \
+	(void*)round_align((uintptr_t)arena->current->avail, arena->align)
+
 void* arena_grow(Arena *arena, size_t at_least){
 	if(arena->region_size < REGION_SIZE){
 		arena->region_size = REGION_SIZE;
@@ -132,15 +135,13 @@ void* arena_alloc(Arena *arena, size_t size){
 		fprintf(stderr, "The local max is %luB.\n", arena->region_size);
 		return NULL;
 	}
-	// TODO(garipew): Right now, alloc also cleans the memory. This is nice to do, already an
-	// improvement compared to doing so in reset. But also there's some redundancy here...
-	// Maybe I could find a way to clean exactly what is going to be used and nothing more?
+
 	if(find_space(arena, size)){
-		arena_zero(arena->current->avail, arena->current->limit-arena->current->avail);
-	}else if(!arena_grow(arena, size)){
+		arena_zero(get_next_aligned(arena), size);
+	} else if(!arena_grow(arena, size)){
 		return NULL;
 	}
-	void *new_ptr = (void*)round_align((uintptr_t)arena->current->avail, arena->align);
+	void *new_ptr = get_next_aligned(arena);
 	arena->current->avail = (void*)(size+(uintptr_t)new_ptr);
 	return new_ptr;
 }
