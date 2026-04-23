@@ -8,14 +8,14 @@
 Snorkel was designed as a monolith library to explore advanced topics on systems programming. After some time, a design shift happened in favor of a more ergonomic style, a collection of header-only libraries. 
 
 These are the topics explored on snorkel:
-    - Memory allocator (arena style)
-    - Coroutines
-    - Thread pool
+- Memory allocator (arena style)
+- Coroutines
+- Thread pool
 
 And these are the C obscure techniques used:
-    - Stb-style header-only libraries
-    - Optional arguments with macros
-    - Inline assembly
+- Stb-style header-only libraries
+- Optional arguments with macros
+- Inline assembly
 
 ## Getting started
 
@@ -55,9 +55,9 @@ sudo make install
 Snorkel does not have a clear goal, neither it has a consistent development rhythm. That said, there will always be interesting topics left to explore and when diving deeper, a snorkel can be handy!
 
 With that in mind, there's still at least some tangible milestone left:
-    - [ ] Finish thread pool
-    - [ ] Refactor with the goal of removing **every** hidden allocation
-    - [ ] Refactor with the goal of fully turning snorkel into a collection of header-only libraries
+- [ ] Finish thread pool
+- [ ] Refactor with the goal of removing **every** hidden allocation
+- [ ] Refactor with the goal of fully turning snorkel into a collection of header-only libraries
 
 ---
 
