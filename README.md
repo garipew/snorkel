@@ -42,7 +42,7 @@ Before their last include, make sure to define `SNORKEL_IMPLEMENTATION`:
 #include "snorkel_pool.h"
 ```
 
-The coroutines are still implemented over the legacy snorkel version, which means in order to use them, you'll have to compile snorkel. Thankfully a Makefile was written to help with this process.  
+The coroutines are not yet available in the header-only form. In order to use them, you'll have to compile snorkel using the provided Makefile.
 
 ```sh
 make
@@ -56,8 +56,7 @@ Snorkel does not have a clear goal, neither it has a consistent development rhyt
 
 With that in mind, there's still at least some tangible milestone left:
 - [ ] Finish thread pool
-- [ ] Refactor with the goal of removing **every** hidden allocation
-- [ ] Refactor with the goal of fully turning snorkel into a collection of header-only libraries
+- [ ] Refactor coroutines into header-only style
 
 ---
 
@@ -69,6 +68,5 @@ Issues and pull requests are welcomed.
 
 Details, references and inspirations for snorkel:
     - stb header libraries
-    - win32 API
     - Fast Allocation and Deallocation of Memory Based on Object Lifetimes (David R. Hanson)
     - Tsoding
