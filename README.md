@@ -1,5 +1,5 @@
 # snorkel
-> A low-level playground for implementation of any interesting concept that I come across.
+> A collection of low-level systems experiments in C, focused on implementing core primitives such as memory allocators, coroutines and thread pools.
 
 ---
 
@@ -16,6 +16,22 @@ And these are the C obscure techniques used:
 - Stb-style header-only libraries
 - Optional arguments with macros
 - Inline assembly
+
+## Design Philosophy
+
+Snorkel is intentionally not uniform. Each module explores a different approach to API design, particularly around memory ownership:
+
+- Coroutines (`snorkel_co.h`)
+Uses allocator injection. User register allocation functions, allowing the library to remain flexible while retaining control over internal memory usage.
+
+- Thread pool (`snorkel_pool.h`)
+Avoid implicit allocations entirely. Functions that require memory receive it explicitly from the caller, making ownership and lifetime fully transparent.
+
+These contrasting approaches are deliberate, allowing exploration of tradeoffs between:
+
+- control vs ergonomics
+- explicitness vs convenience
+- abstraction vs predictability
 
 ## Getting started
 
