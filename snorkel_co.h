@@ -85,9 +85,10 @@ void (set_free)(void (*fn)(void*), struct optargs optargs) {
 coroutine* (coroutine_create)(void* (*routine)(void*), void *arg, struct optargs optargs)
 {
 	snorkel_sched = optargs.sched;
+	void *frame = optargs.sched->allocator.alloc(FRAME_SIZE);
 	coroutine *new = optargs.sched->allocator.alloc(sizeof(*new));
 	new->yield_point = (void*)routine;
-	new->heap_frame = optargs.sched->allocator.alloc(FRAME_SIZE);
+	new->heap_frame = frame;
 	new->rsp = new->heap_frame + FRAME_SIZE;
 	new->rbp = new->rsp;
 	new->arg = arg;
