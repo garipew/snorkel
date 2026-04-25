@@ -52,15 +52,19 @@ Snorkel does not have a clear goal, neither it has a consistent development rhyt
 With that in mind, there's still at least some tangible milestone left:
 - [ ] Finish thread pool
 
----
-
-## Contributing
-
-Issues and pull requests are welcomed.
-
 ## Notes
 
 Details, references and inspirations for snorkel:
 - stb header libraries
 - Fast Allocation and Deallocation of Memory Based on Object Lifetimes (David R. Hanson)
 - Tsoding
+
+---
+
+## Contributing
+
+Issues and pull requests are welcomed.
+
+## License
+
+This project is licensed under MIT license.
