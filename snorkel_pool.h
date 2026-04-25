@@ -23,28 +23,17 @@ struct Pool {
 	struct TODO todo;
 };
 
-enum tag {
-	TASK,
-	ERROR
-};
-
-typedef enum {
-	OK,
-	NO_MEM,
-	EMPTY
-} Error;
-
 typedef struct {
-	union content {
+	union {
 		Task task;
-		Error error;
+		enum { OK, NO_MEM, EMPTY } error;
 	} content;
-	enum tag tag;
+	enum { TASK, ERROR } tag;
 } Result;
 
-int populate_pool(struct Pool*, void*, size_t);
-int register_task(struct Pool*, unsigned short, void* (*)(void*), void *);
 int resize_task_container(struct Pool*, void*, size_t);
+int register_task(struct Pool*, unsigned short, void* (*)(void*), void *);
+int populate_pool(struct Pool*, void*, size_t);
 void join_pool(struct Pool*);
 
 #endif // SNORKEL_POOL_H
