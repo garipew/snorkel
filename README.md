@@ -26,12 +26,14 @@ git clone https://github.com/garipew/snorkel
 cd snorkel
 ```
 
-As every other header-only library, snorkel_arena.h and snorkel_pool.h can simply be dropped into your project and included as a normal header files.
+As every other header-only library, any header file on snorkel can simply be dropped into your project and included as a normal header files.
 
 ```c
 #include "snorkel_arena.h"
-// And
+// Or
 #include "snorkel_pool.h"
+// Or
+#include "snorkel_co.h"
 ```
 
 Before their last include, make sure to define `SNORKEL_IMPLEMENTATION`:
@@ -40,14 +42,7 @@ Before their last include, make sure to define `SNORKEL_IMPLEMENTATION`:
 #define SNORKEL_IMPLEMENTATION
 #include "snorkel_arena.h"
 #include "snorkel_pool.h"
-```
-
-The coroutines are not yet available in the header-only form. In order to use them, you'll have to compile snorkel using the provided Makefile.
-
-```sh
-make
-# And
-sudo make install
+#include "snorkel_co.h"
 ```
 
 ## What's next
@@ -56,7 +51,6 @@ Snorkel does not have a clear goal, neither it has a consistent development rhyt
 
 With that in mind, there's still at least some tangible milestone left:
 - [ ] Finish thread pool
-- [ ] Refactor coroutines into header-only style
 
 ---
 
@@ -67,6 +61,6 @@ Issues and pull requests are welcomed.
 ## Notes
 
 Details, references and inspirations for snorkel:
-    - stb header libraries
-    - Fast Allocation and Deallocation of Memory Based on Object Lifetimes (David R. Hanson)
-    - Tsoding
+- stb header libraries
+- Fast Allocation and Deallocation of Memory Based on Object Lifetimes (David R. Hanson)
+- Tsoding
