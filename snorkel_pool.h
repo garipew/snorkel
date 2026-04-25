@@ -40,7 +40,7 @@ typedef struct {
 		Error error;
 	} content;
 	enum tag tag;
-} Optional;
+} Result;
 
 int populate_pool(struct Pool*, void*, size_t);
 int register_task(struct Pool*, unsigned short, void* (*)(void*), void *);
@@ -91,10 +91,10 @@ void bubble_down(Task *heap, int idx, int len) {
 	}
 }
 
-Optional heap_push(struct TODO *todo, int prio, void* (*chore)(void*), void *arg) {
+Result heap_push(struct TODO *todo, int prio, void* (*chore)(void*), void *arg) {
 	pthread_mutex_lock(&todo->m);
 
-	Optional result = {0};
+	Result result = {0};
 	if(todo->len >= todo->size) {
 		result.tag = ERROR;
 		result.content.error = NO_MEM;
@@ -113,10 +113,10 @@ exit:
 	return result;
 }
 
-Optional heap_pop(struct TODO *todo) {
+Result heap_pop(struct TODO *todo) {
 	pthread_mutex_lock(&todo->m);
 
-	Optional result = {0};
+	Result result = {0};
 	if(todo->len == 0) {
 		result.tag = ERROR;
 		result.content.error = EMPTY;
@@ -136,7 +136,7 @@ void* get_next_task(void *p) {
 	struct Pool *pool = p;
 	struct timespec time = {0};
 	time.tv_nsec = 1000000;
-	Optional result;
+	Result result;
 	while(1) {
 		result = heap_pop(&pool->todo);
 		if(result.tag == ERROR) {
@@ -176,7 +176,7 @@ int register_task(struct Pool *p, unsigned short prio, void* (*chore)(void*), vo
 	if(p == NULL) {
 		return -1;
 	}
-	Optional result = heap_push(&p->todo, prio, chore, arg);
+	Result result = heap_push(&p->todo, prio, chore, arg);
 	if(result.tag == ERROR) {
 		return result.content.error;
 	}
