@@ -1,4 +1,5 @@
-#include <snorkel.h>
+#define SNORKEL_IMPLEMENTATION
+#include "../snorkel_co.h"
 #include <stdio.h>
 
 void* function(){

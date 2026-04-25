@@ -1,8 +1,9 @@
-#include <snorkel.h>
+#define SNORKEL_IMPLEMENTATION
+#include "../snorkel_co.h"
 #include <stdio.h>
+#include <stdlib.h>
 
-Arena my_arena;
-struct _co_scheduler my_scheduler = {0};
+struct snorkel_scheduler my_scheduler = {0};
 
 void* co_arg(){
 	if(get_scheduler() == &my_scheduler){
@@ -12,7 +13,9 @@ void* co_arg(){
 }
 
 int main(){
-	coroutine_create(co_arg, NULL, .sched=&my_scheduler, .arena=&my_arena);
+	set_alloc(malloc, .sched=&my_scheduler);
+	set_free(free, .sched=&my_scheduler);
+	coroutine_create(co_arg, NULL, .sched=&my_scheduler);
 	coroutine_start(.sched=&my_scheduler);
 	return 0;
 }
