@@ -92,6 +92,7 @@ coroutine* (coroutine_create)(void* (*routine)(void*), void *arg, struct optargs
 	new->rsp = new->heap_frame + FRAME_SIZE;
 	new->rbp = new->rsp;
 	new->arg = arg;
+	new->next = NULL;
 	if(!snorkel_sched->start){
 		snorkel_sched->start = new;
 		snorkel_sched->end = new;
