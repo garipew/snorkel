@@ -107,15 +107,19 @@ void arena_zero(u8 *dst, size_t len){
 int find_space(Arena *arena, size_t size){
 	Region *current = arena->current;
 	for(; arena->current; arena->current = arena->current->next){
-		uintptr_t next = (uintptr_t)get_next_aligned(arena) + size;
+		size_t padding = (uintptr_t)get_next_aligned(arena) - (uintptr_t)arena->current->avail;
+		uintptr_t next = (uintptr_t)arena->current->avail + padding + size;
 		if(next < (uintptr_t)arena->current->limit) {
 			arena_zero(get_next_aligned(arena), size);
 			return 1;
 		}
-		if(next < (uintptr_t)arena->current + arena->current->size) {
-			arena_commit(arena, next - (uintptr_t)arena->current->limit);
-			return 1;
+		if(arena->current->size - arena->current->commited < padding + size) {
+			continue;
 		}
+		if(!arena_commit(arena, next - (uintptr_t)arena->current->limit)) {
+			break;
+		}
+		return 1;
 	}
 	arena->current = current;
 	return 0;
@@ -129,14 +133,12 @@ void* arena_alloc(Arena *arena, size_t size){
 		arena->align = 16;
 	}
 
-	if(!find_space(arena, size)){
-		 if(!arena_grow(arena, size) || !find_space(arena, size)) {
-			return NULL;
-		 }
+	if(find_space(arena, size) || (arena_grow(arena, size) && find_space(arena, size))) {
+		void *new_ptr = get_next_aligned(arena);
+		arena->current->avail = (void*)(size+(uintptr_t)new_ptr);
+		return new_ptr;
 	}
-	void *new_ptr = get_next_aligned(arena);
-	arena->current->avail = (void*)(size+(uintptr_t)new_ptr);
-	return new_ptr;
+	return NULL;
 }
 
 void arena_reset(Arena *arena){
