@@ -1,26 +1,7 @@
 #ifndef SNORKEL_ARENA_H
 #define SNORKEL_ARENA_H
 
-#define REGION_SIZE 32768 // PAGE_SIZE * 8
-
-#ifdef __STDC_VERSION__
-#if __STDC_VERSION__ >= 201112L
-#include <stdalign.h>
-#if __STDC_VERSION__ >= 202311L
-#define ALIGNOF(T) alignof(T)
-#else
-#define ALIGNOF(T) _Alignof(T)
-#endif // __STDC_VERSION__ >= 202311L
-#elif __STDC_VERSION__ >= 199901L
-#ifdef __GNUC__
-#define ALIGNOF(T) __alignof__(T)
-#endif // __GNUC__
-#endif // __STDC_VERSION__ >= 201112L
-#endif // __STDC_VERSION__
-       
-#ifndef ALIGNOF
-#error "Missing ALIGNOF: compiler/standard not supported"
-#endif
+#define REGION_SIZE (1ul<<28) // 256MB
 
 #include <stdint.h>
 #include <stddef.h>
@@ -32,6 +13,8 @@ struct Region{
 	Region *next;
 	u8 *avail;
 	u8 *limit;
+	size_t commited;
+	size_t size;
 };
 
 struct flag {
@@ -43,13 +26,9 @@ struct flag {
 typedef struct {
 	Region *start, *end;
 	Region *current;
-	size_t region_size;
-	u8 align;
 	struct flag *checkpoint;
+	u8 align;
 } Arena;
-
-#define arena_set_align(arena, align) \
-	a->align = new_align
 
 void* arena_grow(Arena*, size_t);
 void* arena_alloc(Arena*, size_t);
@@ -57,61 +36,89 @@ void arena_free(Arena*);
 void arena_reset(Arena*);
 void arena_flag(Arena*);
 void arena_restore(Arena*);
+void arena_set_align(Arena*, u8);
 #endif // SNORKEL_ARENA_H
 
 #ifdef SNORKEL_IMPLEMENTATION
-#include <stdio.h>
 #include <sys/mman.h>
+#include <unistd.h>
 
 #define round_align(start, align) \
 	(((start)+(align)-1) & ~((align)-1))
-
-#define have_space(region, size, align) \
-	(round_align((uintptr_t)region->avail, align) + size < (uintptr_t)region->limit)
 
 #define get_next_aligned(arena) \
 	(void*)round_align((uintptr_t)arena->current->avail, arena->align)
 
 void* arena_grow(Arena *arena, size_t at_least){
-	if(arena->region_size < REGION_SIZE){
-		arena->region_size = REGION_SIZE;
+	size_t page_size = sysconf(_SC_PAGE_SIZE);
+
+	size_t region_size =  REGION_SIZE;
+	if(region_size < at_least) {
+		region_size = round_align(at_least, page_size);
 	}
-	if(at_least > REGION_SIZE && !arena->start){
-		arena->region_size = round_align(sizeof(Region)+at_least, 16);
-	}
-	void *new_block = mmap(NULL, arena->region_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-	if(new_block == MAP_FAILED){
+
+	Region *new_region = mmap(NULL, region_size, PROT_NONE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+	if(new_region == MAP_FAILED){
 		return NULL;
 	}
-	Region *new_region = new_block;
+	if(mprotect(new_region, round_align(sizeof(*new_region), page_size), PROT_READ|PROT_WRITE)) {
+		munmap(new_region, REGION_SIZE);
+		return NULL;
+	}
 	new_region->avail = (u8*)new_region + sizeof(*new_region);
-	new_region->limit = (u8*)new_region + arena->region_size;
+	new_region->commited = round_align(sizeof(*new_region), page_size);
+	new_region->limit = (u8*)new_region + new_region->commited;
+	new_region->size = region_size;
 	arena->current = new_region;
+	arena->end = new_region;
 	if(!arena->start){
 		arena->start = new_region;
-		arena->end = arena->start;
 		return arena->current;
 	}
 	arena->end->next = new_region;
-	arena->end = new_region;
 	return arena->current;
 }
 
-int find_space(Arena *arena, size_t size){
-	for(; arena->current; arena->current = arena->current->next){
-		if(have_space(arena->current, size, arena->align)){
-			return 1;
-		}
+void* arena_commit(Arena *arena, size_t size) {
+	if(!arena->start || !arena->end || !arena->current) {
+		return NULL;
 	}
-	return 0;
+	if(arena->current->commited + size > REGION_SIZE) {
+		return NULL;
+	}
+	size_t page_size = sysconf(_SC_PAGE_SIZE);
+	size_t new_commit = round_align(size, page_size);
+	if(!mprotect(arena->current->limit, new_commit, PROT_READ|PROT_WRITE)) {
+		arena->current->limit += new_commit;
+		arena->current->commited += new_commit;
+		return get_next_aligned(arena);
+	}
+	return NULL;
 }
 
-void arena_zero(u8* dst, size_t len){
-	u8* ptr = dst;
+void arena_zero(u8 *dst, size_t len){
+	u8 *ptr = dst;
 	while(ptr < dst + len){
 		*ptr = 0;
 		ptr++;
 	}
+}
+
+int find_space(Arena *arena, size_t size){
+	Region *current = arena->current;
+	for(; arena->current; arena->current = arena->current->next){
+		uintptr_t next = (uintptr_t)get_next_aligned(arena) + size;
+		if(next < (uintptr_t)arena->current->limit) {
+			arena_zero(get_next_aligned(arena), size);
+			return 1;
+		}
+		if(next < (uintptr_t)arena->current + arena->current->size) {
+			arena_commit(arena, next - (uintptr_t)arena->current->limit);
+			return 1;
+		}
+	}
+	arena->current = current;
+	return 0;
 }
 
 void* arena_alloc(Arena *arena, size_t size){
@@ -121,25 +128,11 @@ void* arena_alloc(Arena *arena, size_t size){
 	if(arena->align == 0){
 		arena->align = 16;
 	}
-	if(arena->start && size > arena->region_size){
-		// TODO(garipew): Unsure if this should be a thing. Right now, the first allocation
-		// defines the scope of an arena, ensuring the congruency of the sizes of regions.
-		// But I don't know if this should be responsibility of the allocator...
-		// In fact this doesn't solve the possibility of fragmentation. There is no solution
-		// but the informed usage. I have heard that arenas aren't the 'one size fits all'
-		// allocator such as malloc, but at the same time, I can not have a constant
-		// max size for regions.
-		// This will at least help me understand how I would like to use arenas...
-		// TLDR: What to do if I have 4KB regions and need 400MB?
-		fprintf(stderr, "This arena does not allow such allocations.\n");
-		fprintf(stderr, "The local max is %luB.\n", arena->region_size);
-		return NULL;
-	}
 
-	if(find_space(arena, size)){
-		arena_zero(get_next_aligned(arena), size);
-	} else if(!arena_grow(arena, size)){
-		return NULL;
+	if(!find_space(arena, size)){
+		 if(!arena_grow(arena, size) || !find_space(arena, size)) {
+			return NULL;
+		 }
 	}
 	void *new_ptr = get_next_aligned(arena);
 	arena->current->avail = (void*)(size+(uintptr_t)new_ptr);
@@ -158,34 +151,35 @@ void arena_free(Arena *arena){
 	for(; arena->current;){
 		arena->end = arena->current;
 		arena->current = arena->current->next;
-		munmap(arena->end, arena->region_size);
+		munmap(arena->end, arena->end->size);
 	}
-	arena->start = NULL;
-	arena->end = NULL;
-	arena->current = NULL;
-	arena->region_size = 0;
+	arena_zero((void*)arena, sizeof(*arena));
 }
 
-void arena_flag(Arena *a){
-	if(a->current == NULL){
+void arena_flag(Arena *arena){
+	if(arena->current == NULL){
 		return;
 	}
-	Region *current = a->current;
+	Region *current = arena->current;
 	u8 *addr = current->avail;
-	struct flag *f = arena_alloc(a, sizeof(*f));
+	struct flag *f = arena_alloc(arena, sizeof(*f));
 	f->region = current;
 	f->addr = addr;
-	f->prev = a->checkpoint;
-	a->checkpoint = f;
+	f->prev = arena->checkpoint;
+	arena->checkpoint = f;
 }
 
-void arena_restore(Arena *a){
-	if(a->checkpoint == NULL){
+void arena_restore(Arena *arena){
+	if(arena->checkpoint == NULL){
 		return;
 	}
-	a->current = a->checkpoint->region;
-	a->current->avail = a->checkpoint->addr;
-	a->checkpoint = a->checkpoint->prev;
+	arena->current = arena->checkpoint->region;
+	arena->current->avail = arena->checkpoint->addr;
+	arena->checkpoint = arena->checkpoint->prev;
+}
+
+void arena_set_align(Arena *arena, u8 align) {
+	arena->align = align;
 }
 
 #endif // SNORKEL_IMPLEMENTATION

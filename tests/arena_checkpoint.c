@@ -1,6 +1,7 @@
 #define SNORKEL_IMPLEMENTATION
 #include "../snorkel_arena.h"
 #include <stdint.h>
+#include <stdio.h>
 
 Arena g = {0};
 
