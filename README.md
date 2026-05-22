@@ -19,19 +19,7 @@ And these are the C obscure techniques used:
 
 ## Design Philosophy
 
-Snorkel is intentionally not uniform. Each module explores a different approach to API design, particularly around memory ownership:
-
-- Coroutines (`snorkel_co.h`)
-Uses allocator injection. User register allocation functions, allowing the library to remain flexible while retaining control over internal memory usage.
-
-- Thread pool (`snorkel_pool.h`)
-Avoid implicit allocations entirely. Functions that require memory receive it explicitly from the caller, making ownership and lifetime fully transparent.
-
-These contrasting approaches are deliberate, allowing exploration of tradeoffs between:
-
-- control vs ergonomics
-- explicitness vs convenience
-- abstraction vs predictability
+Snorkel implements a memory allocator on `snorkel_arena.h` but does not force it. The stb design makes snorkel a modular library, no dependencies over each of snorkel pieces. That shouldn't mean, and it doesn't, that you can't use snorkel arenas on the other modules. Snorkel is allocator agnostic, to initialize modules, inject an allocator.
 
 ## Getting started
 
