@@ -3,52 +3,76 @@
 
 #include <pthread.h>
 
-typedef struct Task Task;
-struct Task {
+typedef struct {
 	unsigned short prio;
 	void* (*chore)(void*);
 	void* arg;
-};
-
-struct TODO {
-	Task *tasks;
-	size_t size;
-	size_t len;
-	pthread_mutex_t m;
-};
-
-struct Pool {
-	pthread_t *workers;
-	size_t worker_count;
-	struct TODO todo;
-};
+} Task;
 
 typedef struct {
-	union {
-		Task task;
-		enum { OK, NO_MEM, EMPTY } error;
-	} content;
-	enum { TASK, ERROR } tag;
-} Result;
+	pthread_mutex_t m;
+	pthread_cond_t task_available;
+	pthread_cond_t tasks_complete;
 
-int resize_task_container(struct Pool*, void*, size_t);
-int register_task(struct Pool*, unsigned short, void* (*)(void*), void *);
-int populate_pool(struct Pool*, void*, size_t);
-void join_pool(struct Pool*);
+	pthread_t *workers;
+	size_t working;
+	size_t worker_count;
+
+	Task *tasks;
+	size_t task_count;
+	size_t task_size;
+
+	unsigned short keepalive;
+} Pool;
+
+struct snorkel_pool_allocator {
+	void* (*alloc)(size_t);
+	void* (*realloc)(void*, size_t);
+	void (*free)(void*);
+};
+
+extern struct snorkel_pool_allocator allocator;
+void snorkel_pool_inject_allocators(void* (*)(size_t), void* (*)(void*, size_t), void (*)(void*));
+
+// Create a new Pool
+Pool* create_pool(size_t, size_t);
+
+// Add new task to Pool
+int register_task(Pool*, unsigned short, void* (*)(void*), void*);
+
+// Wait all tasks complete on Pool
+void wait_pool(Pool*);
+
+// Send finish message to workers
+void kill_pool(Pool*);
+
+// Free resources
+void free_resources(Pool*);
 
 #endif // SNORKEL_POOL_H
 
 #ifdef SNORKEL_IMPLEMENTATION
 
-#include <time.h>
+struct snorkel_pool_allocator allocator;
 
 #define swap(T, arr, i, j)               \
-	do {		                 \
+	do {                             \
 		T tmp;                   \
 		tmp = (arr)[(i)];        \
 		(arr)[(i)] = (arr)[(j)]; \
-		(arr)[(j)] = tmp; 	 \
+		(arr)[(j)] = tmp;        \
 	} while(0)
+
+int resize_task_buffer(Pool *pool) {
+	pool->task_size *= 2;
+	void *new_buff = allocator.realloc(pool->tasks, sizeof(*pool->tasks) * pool->task_size);
+	if(!new_buff) {
+		pool->task_size /= 2;
+		return 1;
+	}
+	pool->tasks = new_buff;
+	return 0;
+}
 
 void bubble_up(Task *heap, int idx) {
 	while(idx > 0) {
@@ -80,118 +104,180 @@ void bubble_down(Task *heap, int idx, int len) {
 	}
 }
 
-Result heap_push(struct TODO *todo, int prio, void* (*chore)(void*), void *arg) {
-	pthread_mutex_lock(&todo->m);
-
-	Result result = {0};
-	if(todo->len >= todo->size) {
-		result.tag = ERROR;
-		result.content.error = NO_MEM;
-		goto exit;
+Task* heap_push(Pool *pool, int prio, void* (*chore)(void*), void *arg) {
+	Task *t = NULL;
+	if(pool->task_count >= pool->task_size && resize_task_buffer(pool)) {
+		return t;
 	}
-	Task *t = &(todo->tasks[todo->len]);
+
+	t = &(pool->tasks[pool->task_count]);
 	t->prio = prio;
 	t->chore = chore;
 	t->arg = arg;
-	result.content.task = *t;
 
-	bubble_up(todo->tasks, todo->len++);
+	bubble_up(pool->tasks, pool->task_count++);
 
-exit:
-	pthread_mutex_unlock(&todo->m);
-	return result;
+	return t;
 }
 
-Result heap_pop(struct TODO *todo) {
-	pthread_mutex_lock(&todo->m);
-
-	Result result = {0};
-	if(todo->len == 0) {
-		result.tag = ERROR;
-		result.content.error = EMPTY;
-		goto exit;
+Task heap_pop(Pool *pool) {
+	Task result = {0};
+	if(pool->task_count == 0) {
+		return result;
 	}
-	result.content.task = todo->tasks[0];
-	todo->tasks[0] = todo->tasks[--todo->len];
+	result = pool->tasks[0];
+	pool->tasks[0] = pool->tasks[--pool->task_count];
 
-	bubble_down(todo->tasks, 0, todo->len);
+	bubble_down(pool->tasks, 0, pool->task_count);
 
-exit:
-	pthread_mutex_unlock(&todo->m);
 	return result;
 }
 
-void* get_next_task(void *p) {
-	struct Pool *pool = p;
-	struct timespec time = {0};
-	time.tv_nsec = 1000000;
-	Result result;
+void* get_next_task(void *arg) {
+	Pool *pool = arg;
+	Task result;
 	while(1) {
-		result = heap_pop(&pool->todo);
-		if(result.tag == ERROR) {
-			nanosleep(&time, NULL);
-			continue;
+		pthread_mutex_lock(&pool->m);
+
+		while(pool->keepalive && pool->task_count <= 0) {
+			pthread_cond_wait(&pool->task_available, &pool->m);
 		}
-		result.content.task.chore(result.content.task.arg);
+		if(!pool->keepalive) {
+			break;
+		}
+		result = heap_pop(pool);
+		pool->working++;
+
+		pthread_mutex_unlock(&pool->m);
+
+		if(result.chore) {
+			result.chore(result.arg);
+		}
+
+		pthread_mutex_lock(&pool->m);
+		pool->working--;
+		if(pool->working == 0 && pool->task_count == 0) {
+			pthread_cond_signal(&pool->tasks_complete);
+		}
+		pthread_mutex_unlock(&pool->m);
 	}
+
+	pthread_mutex_unlock(&pool->m);
 	return NULL;
 }
 
-void join_pool(struct Pool *pool) {
-	for(int i = 0; i < pool->worker_count; i++) {
-		pthread_join(pool->workers[i], NULL);
-	}
+void snorkel_pool_inject_allocators(void* (*alloc)(size_t), void* (*realloc)(void*, size_t), void (*free)(void*)) {
+	allocator.alloc = alloc;
+	allocator.realloc = realloc;
+	allocator.free = free;
 }
 
-// TODO(garipew): Break this into two functions:
-// 	- resize_pool
-// 	- run_workers
-int populate_pool(struct Pool *pool, void *mem, size_t bytes) {
-	if(pool == NULL) {
-		return -1;
+Pool* create_pool(size_t workers, size_t tasks) {
+	Pool *p = NULL;
+	if(!allocator.alloc || !(p = allocator.alloc(sizeof(*p)))) {
+		goto exit;
 	}
-	pthread_mutex_init(&pool->todo.m, NULL);
-	int worker_count = bytes / sizeof(*pool->workers);
-	for(int i = 0; i < worker_count; i++) {
-		pthread_t *w = &((pthread_t*)mem)[i];
-		pthread_create(w, NULL, get_next_task, (void*)pool);
+
+	pthread_mutex_init(&p->m, NULL);
+	pthread_cond_init(&p->task_available, NULL);
+	pthread_cond_init(&p->tasks_complete, NULL);
+
+	p->keepalive = 1;
+
+	p->working = 0;
+	p->worker_count = workers;
+	if(p->worker_count == 0) {
+		p->worker_count++;
 	}
-	pool->workers = mem;
-	pool->worker_count = worker_count;
-	return worker_count;
+	p->workers = allocator.alloc(sizeof(*p->workers) * p->worker_count);
+	if(!p->workers) {
+		goto clean_pool;
+	}
+
+	p->task_size = tasks;
+	if(p->task_size == 0) {
+		p->task_size++;
+	}
+	p->tasks = allocator.alloc(sizeof(*p->tasks) * p->task_size);
+	if(!p->tasks) {
+		goto clean_workers;
+	}
+
+	for(int i = 0; i < p->worker_count; i++) {
+		pthread_create(&p->workers[i], NULL, get_next_task, p);
+	}
+	goto exit;
+
+clean_workers:
+	allocator.free(p->workers);
+	p->workers = NULL;
+clean_pool:
+	allocator.free(p);
+	p = NULL;
+exit:
+	return p;
 }
 
-int register_task(struct Pool *p, unsigned short prio, void* (*chore)(void*), void *arg) {
+int register_task(Pool *p, unsigned short prio, void* (*chore)(void*), void *arg) {
 	if(p == NULL) {
 		return -1;
 	}
-	Result result = heap_push(&p->todo, prio, chore, arg);
-	if(result.tag == ERROR) {
-		return result.content.error;
+
+	pthread_mutex_lock(&p->m);
+
+	int retval = -2;
+	Task *result = heap_push(p, prio, chore, arg);
+	if(result) {
+		pthread_cond_signal(&p->task_available);
+		retval = 0;
 	}
-	return 0;
+
+	pthread_mutex_unlock(&p->m);
+	return retval;
 }
 
-int resize_task_container(struct Pool *p, void *mem, size_t bytes) {
-	int retval = 0;
-	Task *new_buff = mem;
-	size_t new_len = bytes / sizeof(Task);
-	size_t idx = 0;
-	if(!p->todo.tasks) {
-		retval = -1;
-		goto assign;
+void wait_pool(Pool *p) {
+	if(!p) {
+		return;
 	}
-	while(idx < new_len) {
-		if(idx >= p->todo.len) {
-			break;
-		}
-		new_buff[idx] = p->todo.tasks[idx];
+
+	pthread_mutex_lock(&p->m);
+	while(p->working > 0 || p->task_count > 0) {
+		pthread_cond_wait(&p->tasks_complete, &p->m);
 	}
-assign:
-	p->todo.tasks = new_buff;
-	p->todo.size = new_len;
-	p->todo.len = idx;
-	return retval;
+	pthread_mutex_unlock(&p->m);
+}
+
+void kill_pool(Pool *p) {
+	if(!p) {
+		return;
+	}
+	pthread_mutex_lock(&p->m);
+
+	p->keepalive = 0;
+	p->task_count = 0;
+	pthread_cond_broadcast(&p->task_available);
+
+	pthread_mutex_unlock(&p->m);
+}
+
+void free_resources(Pool *p) {
+	pthread_mutex_lock(&p->m);
+	size_t worker_count = p->worker_count;
+	pthread_mutex_unlock(&p->m);
+
+	kill_pool(p);
+	for(int i = 0; i < worker_count; i++) {
+		pthread_join(p->workers[i], NULL);
+	}
+
+	pthread_mutex_destroy(&p->m);
+	pthread_cond_destroy(&p->task_available);
+	pthread_cond_destroy(&p->tasks_complete);
+
+	allocator.free(p->workers);
+	allocator.free(p->tasks);
+	allocator.free(p);
 }
 
 #endif // SNORKEL_IMPLEMENTATION
