@@ -49,13 +49,6 @@ Before their last include, make sure to define `SNORKEL_IMPLEMENTATION`:
 #include "snorkel_co.h"
 ```
 
-## What's next
-
-Snorkel does not have a clear goal, neither it has a consistent development rhythm. That said, there will always be interesting topics left to explore and when diving deeper, a snorkel can be handy!
-
-With that in mind, there's still at least some tangible milestone left:
-- [ ] Finish thread pool
-
 ## Notes
 
 Details, references and inspirations for snorkel:
