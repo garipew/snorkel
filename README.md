@@ -55,6 +55,7 @@ Details, references and inspirations for snorkel:
 - stb header libraries
 - Fast Allocation and Deallocation of Memory Based on Object Lifetimes (David R. Hanson)
 - Tsoding
+- [This blog post](https://nachtimwald.com/2019/04/12/thread-pool-in-c/)
 
 ---
 
