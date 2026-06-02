@@ -203,7 +203,7 @@ Pool* create_pool(size_t workers, size_t tasks) {
 		goto clean_workers;
 	}
 
-	for(int i = 0; i < p->worker_count; i++) {
+	for(size_t i = 0; i < p->worker_count; i++) {
 		pthread_create(&p->workers[i], NULL, get_next_task, p);
 	}
 	goto exit;
@@ -267,7 +267,7 @@ void free_resources(Pool *p) {
 	pthread_mutex_unlock(&p->m);
 
 	kill_pool(p);
-	for(int i = 0; i < worker_count; i++) {
+	for(size_t i = 0; i < worker_count; i++) {
 		pthread_join(p->workers[i], NULL);
 	}
 
